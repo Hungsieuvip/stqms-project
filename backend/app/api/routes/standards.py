@@ -4,7 +4,7 @@ from typing import List
 from datetime import date
 
 from app.api import deps
-from app.models.standard import Standard  # hoặc app.models.standards tùy cấu trúc model
+from app.models.quality import Standard
 from app.models.user import User
 from app.schemas.standard import StandardCreate, StandardUpdate, StandardResponse
 
