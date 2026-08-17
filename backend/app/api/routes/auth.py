@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -21,27 +21,21 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class LoginRequest(BaseModel):
-    username: Optional[str] = None
-    email: Optional[str] = None
-    password: str
-
 @router.post("/login", response_model=TokenResponse)
-def login(login_data: LoginRequest, db: Session = Depends(deps.get_db)):
-    account = login_data.username or login_data.email
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Vui lòng nhập tài khoản hoặc email"
-        )
-
+def login(
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(deps.get_db)
+):
+    account = username.strip()
+    
     # Kiểm tra xem người dùng đang nhập email hay username
     if "@" in account:
         user = db.query(User).filter(User.email == account).first()
     else:
         user = db.query(User).filter(User.username == account).first()
 
-    if not user or not security.verify_password(login_data.password, user.hashed_password):
+    if not user or not security.verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
