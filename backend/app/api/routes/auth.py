@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from typing import Optional
+from pydantic import BaseModel
 from app.api import deps
 from app.core import security
 from app.models.user import User
-from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -21,14 +21,27 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class LoginRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: str
+
 @router.post("/login", response_model=TokenResponse)
-def login(db: Session = Depends(deps.get_db), form_data: OAuth2PasswordRequestForm = Depends()):
+def login(login_data: LoginRequest, db: Session = Depends(deps.get_db)):
+    account = login_data.username or login_data.email
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Vui lòng nhập tài khoản hoặc email"
+        )
+
     # Kiểm tra xem người dùng đang nhập email hay username
-    if "@" in form_data.username:
-        user = db.query(User).filter(User.email == form_data.username).first()
+    if "@" in account:
+        user = db.query(User).filter(User.email == account).first()
     else:
-        user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not security.verify_password(form_data.password, user.hashed_password):
+        user = db.query(User).filter(User.username == account).first()
+
+    if not user or not security.verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -41,8 +54,6 @@ def login(db: Session = Depends(deps.get_db), form_data: OAuth2PasswordRequestFo
 
 @router.post("/logout")
 def logout():
-    # Trong stateless JWT, logout thường xử lý ở client (xóa token).
-    # Có thể kết hợp Redis blacklist nếu cần strict logout.
     return {"message": "Successfully logged out. Please remove token on client."}
 
 @router.get("/me", response_model=UserResponse)

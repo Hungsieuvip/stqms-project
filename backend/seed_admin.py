@@ -1,41 +1,46 @@
-import sys
-import os
-
-# Đảm bảo Python nhận diện được thư mục app
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from app.db.session import SessionLocal
-from app.models.user import User
+import asyncio
 from app.core.security import get_password_hash
-import app.models.rbac
+from app.models.user import User
+from app.core.config import settings
 
-def create_admin():
+# Import session t? database c?a d? �n
+try:
+    from app.db.session import SessionLocal
+except ImportError:
+    try:
+        from app.database import SessionLocal
+    except ImportError:
+        from app.db import SessionLocal
+
+def seed():
     db = SessionLocal()
     try:
-        # Kiểm tra xem đã có user admin chưa
-        user = db.query(User).filter(User.email == "admin@stqms.vn").first()
-        if not user:
-            print("Đang tạo tài khoản Admin...")
-            admin_user = User(
-                email="admin@stqms.vn",
-                username="admin_stqms", # Đổi từ full_name sang username
-                hashed_password=get_password_hash("Admin@123"),
-                is_active=True
-                # Đã xóa is_superuser vì bảng của bạn không có cột này
-            )
-            db.add(admin_user)
-            db.commit()
-            print("✅ TẠO TÀI KHOẢN THÀNH CÔNG!")
-            print("-----------------------------------------")
-            print("👉 Tên đăng nhập : admin@stqms.vn")
-            print("👉 Mật khẩu      : Admin@123")
-            print("-----------------------------------------")
+        # Ki?m tra xem user admin d� c� chua
+        user = db.query(User).filter((User.username == "admin") | (User.email == "admin@stqms.vn")).first()
+        hashed_pw = get_password_hash("Admin@123456")
+        
+        if user:
+            user.username = "admin"
+            user.email = "admin@stqms.vn"
+            user.hashed_password = hashed_pw
+            user.is_active = True
+            print("===> Da cap nhat mat khau cho tai khoan Admin thanh cong!")
         else:
-            print("⚠️ Tài khoản admin@stqms.vn đã tồn tại trong hệ thống!")
+            new_user = User(
+                username="admin",
+                email="admin@stqms.vn",
+                hashed_password=hashed_pw,
+                is_active=True
+            )
+            db.add(new_user)
+            print("===> Da tao moi tai khoan Admin thanh cong!")
+        
+        db.commit()
     except Exception as e:
-        print(f"❌ Có lỗi xảy ra: {e}")
+        db.rollback()
+        print(f"Loi: {e}")
     finally:
         db.close()
 
 if __name__ == "__main__":
-    create_admin()
+    seed()
