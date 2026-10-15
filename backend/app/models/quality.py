@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Date, Text, Boolean, ForeignKey, Integer
+from sqlalchemy import String, Date, Text, Boolean, ForeignKey, Integer, DateTime
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.sql import func
 from app.db.base_class import Base
 
 class Standard(Base):
@@ -13,6 +15,8 @@ class Standard(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     issued_date: Mapped[Date] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     criteria: Mapped[list["Criterion"]] = relationship("Criterion", back_populates="standard", cascade="all, delete")
 
@@ -26,6 +30,8 @@ class Criterion(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     sequence_num: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     standard: Mapped["Standard"] = relationship("Standard", back_populates="criteria")
     requirements: Mapped[list["Requirement"]] = relationship("Requirement", back_populates="criterion", cascade="all, delete")
@@ -36,8 +42,10 @@ class Requirement(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     criteria_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("criteria.id", ondelete="CASCADE"))
     code: Mapped[str] = mapped_column(String(50), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False) # Sử dụng description thay cho 'content' để tuân thủ DB Lock
+    description: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_num: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     criterion: Mapped["Criterion"] = relationship("Criterion", back_populates="requirements")

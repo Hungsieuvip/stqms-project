@@ -21,7 +21,7 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const { login } = useAuth();
   
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
+  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { remember: false }
   });
@@ -111,6 +111,35 @@ export default function LoginPage() {
               {isSubmitting ? 'Đang xác thực...' : 'Đăng nhập hệ thống'}
             </button>
           </form>
+
+          {/* Chế độ Khách (Guest Mode) Quick Access */}
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">
+                    Chế độ Khách (Guest / Viewer)
+                  </span>
+                  <p className="text-xs text-slate-600 mt-1.5">
+                    Tài khoản: <code className="bg-white px-1.5 py-0.5 rounded border text-slate-800 font-mono text-[11px] font-semibold">Passview123@</code>
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Mật khẩu: <code className="bg-white px-1.5 py-0.5 rounded border text-slate-800 font-mono text-[11px] font-semibold">Passview123@</code>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue('username', 'Passview123@');
+                    setValue('password', 'Passview123@');
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md transition shadow-xs"
+                >
+                  Điền nhanh
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

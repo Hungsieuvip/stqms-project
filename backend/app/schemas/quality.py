@@ -10,27 +10,28 @@ class PaginatedResponse(BaseModel):
     size: int
     items: list
 
-# Standard
-class StandardBase(BaseModel):
+# Requirement
+class RequirementBase(BaseModel):
     code: str
-    name: str
-    description: Optional[str] = None
-    issued_date: Optional[date] = None
+    description: str
+    sequence_num: int
+    is_active: Optional[bool] = True
 
-class StandardCreate(StandardBase):
-    pass
+class RequirementCreate(RequirementBase):
+    criteria_id: uuid.UUID
 
-class StandardUpdate(BaseModel):
+class RequirementUpdate(BaseModel):
     code: Optional[str] = None
-    name: Optional[str] = None
     description: Optional[str] = None
-    issued_date: Optional[date] = None
+    sequence_num: Optional[int] = None
+    is_active: Optional[bool] = None
 
-class StandardResponse(StandardBase):
+class RequirementResponse(RequirementBase):
     id: uuid.UUID
+    criteria_id: uuid.UUID
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Criterion
@@ -39,6 +40,7 @@ class CriterionBase(BaseModel):
     name: str
     description: Optional[str] = None
     sequence_num: int
+    is_active: Optional[bool] = True
 
 class CriterionCreate(CriterionBase):
     standard_id: uuid.UUID
@@ -48,31 +50,39 @@ class CriterionUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     sequence_num: Optional[int] = None
+    is_active: Optional[bool] = None
 
 class CriterionResponse(CriterionBase):
     id: uuid.UUID
     standard_id: uuid.UUID
     is_active: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    requirements: List[RequirementResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
-# Requirement
-class RequirementBase(BaseModel):
+# Standard
+class StandardBase(BaseModel):
     code: str
-    description: str
-    sequence_num: int
-
-class RequirementCreate(RequirementBase):
-    criteria_id: uuid.UUID
-
-class RequirementUpdate(BaseModel):
-    code: Optional[str] = None
+    name: str
     description: Optional[str] = None
-    sequence_num: Optional[int] = None
+    issued_date: Optional[date] = None
+    is_active: Optional[bool] = True
 
-class RequirementResponse(RequirementBase):
+class StandardCreate(StandardBase):
+    pass
+
+class StandardUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    issued_date: Optional[date] = None
+    is_active: Optional[bool] = None
+
+class StandardResponse(StandardBase):
     id: uuid.UUID
-    criteria_id: uuid.UUID
     is_active: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    criteria: List[CriterionResponse] = []
     model_config = ConfigDict(from_attributes=True)

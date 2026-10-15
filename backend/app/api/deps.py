@@ -46,15 +46,20 @@ class RequirePermissions:
         self.required_permissions = required_permissions
 
     def __call__(self, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-        # Lấy tất cả permission của user từ các roles
+        # 1. Admin bypass: Full quyền cho Quản trị viên
+        role_names = [r.name.upper() for r in current_user.roles]
+        if (
+            "ADMIN" in role_names 
+            or "QUẢN TRỊ HỆ THỐNG" in role_names 
+            or getattr(current_user, "username", "").lower() == "admin"
+        ):
+            return current_user
+
+        # 2. Lấy tất cả permission của user từ các roles
         user_permissions = set()
         for role in current_user.roles:
             for perm in role.permissions:
                 user_permissions.add(perm.name)
-        
-        # Admin bypass (Optionally)
-        if "ADMIN" in [r.name for r in current_user.roles]:
-            return current_user
 
         missing_permissions = [p for p in self.required_permissions if p not in user_permissions]
         

@@ -10,7 +10,8 @@ INSERT INTO departments (id, code, name, is_active) VALUES
 INSERT INTO roles (id, code, name, description) VALUES 
 ('r1111111-1111-1111-1111-111111111111', 'ADMIN', 'Quản trị hệ thống', 'Toàn quyền hệ thống'),
 ('r2222222-2222-2222-2222-222222222222', 'QA_MANAGER', 'Quản lý chất lượng', 'Quản lý tiêu chuẩn, phê duyệt minh chứng'),
-('r3333333-3333-3333-3333-333333333333', 'STAFF', 'Giảng viên / Chuyên viên', 'Upload minh chứng, thực hiện công việc');
+('r3333333-3333-3333-3333-333333333333', 'STAFF', 'Giảng viên / Chuyên viên', 'Upload minh chứng, thực hiện công việc'),
+('r4444444-4444-4444-4444-444444444444', 'VIEWER', 'Khách xem / Viewer', 'Chế độ khách, chỉ xem dữ liệu');
 
 -- 3. Permissions
 INSERT INTO permissions (id, code, name, module) VALUES 
@@ -30,17 +31,19 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
 ('r2222222-2222-2222-2222-222222222222', 'p4444444-4444-4444-4444-444444444444'),
 ('r3333333-3333-3333-3333-333333333333', 'p3333333-3333-3333-3333-333333333333');
 
--- 5. Users (Password is hashed version of 'password123' - assuming bcrypt)
+-- 5. Users (Password is hashed version of 'password123' / 'Passview123@')
 INSERT INTO users (id, username, email, password_hash, full_name, department_id, is_active) VALUES 
 ('u1111111-1111-1111-1111-111111111111', 'admin', 'admin@stqms.edu.vn', '$2b$12$NqN.U7y...fakehash...', 'System Admin', 'd1111111-1111-1111-1111-111111111111', true),
 ('u2222222-2222-2222-2222-222222222222', 'qamanager', 'qa@stqms.edu.vn', '$2b$12$NqN.U7y...fakehash...', 'Trưởng phòng QA', 'd2222222-2222-2222-2222-222222222222', true),
-('u3333333-3333-3333-3333-333333333333', 'staff1', 'staff1@stqms.edu.vn', '$2b$12$NqN.U7y...fakehash...', 'Nguyễn Văn A', 'd3333333-3333-3333-3333-333333333333', true);
+('u3333333-3333-3333-3333-333333333333', 'staff1', 'staff1@stqms.edu.vn', '$2b$12$NqN.U7y...fakehash...', 'Nguyễn Văn A', 'd3333333-3333-3333-3333-333333333333', true),
+('u4444444-4444-4444-4444-444444444444', 'Passview123@', 'passview123@stqms.vn', '$2b$12$g9Qp9Q/E03Kk4wYq4bYmLeB0bZgqZfGqV4PqQ9Q/E03Kk4wYq4bYm', 'Khách Xem (Guest)', 'd3333333-3333-3333-3333-333333333333', true);
 
 -- 6. User Roles
 INSERT INTO user_roles (user_id, role_id) VALUES 
 ('u1111111-1111-1111-1111-111111111111', 'r1111111-1111-1111-1111-111111111111'),
 ('u2222222-2222-2222-2222-222222222222', 'r2222222-2222-2222-2222-222222222222'),
-('u3333333-3333-3333-3333-333333333333', 'r3333333-3333-3333-3333-333333333333');
+('u3333333-3333-3333-3333-333333333333', 'r3333333-3333-3333-3333-333333333333'),
+('u4444444-4444-4444-4444-444444444444', 'r4444444-4444-4444-4444-444444444444');
 
 -- 7. Academic Years
 INSERT INTO academic_years (id, code, name, start_date, end_date, is_current) VALUES 

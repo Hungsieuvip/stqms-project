@@ -15,12 +15,14 @@ import {
   LogOut, 
   Menu, 
   X,
-  ShieldCheck
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { label: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Tiêu chuẩn & Tiêu chí', href: '/standards', icon: Layers },
+  { label: 'Bộ Tiêu chuẩn', href: '/standards', icon: Layers },
+  { label: 'Danh mục Tiêu chí', href: '/criteria', icon: CheckCircle2 },
   { label: 'Hồ sơ & Minh chứng', href: '/evidences', icon: FileCheck2 },
   { label: 'Nhiệm vụ & Kế hoạch', href: '/tasks', icon: ListTodo },
   { label: 'Đánh giá & Chấm điểm', href: '/evaluations', icon: CheckSquare },
@@ -72,7 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             if (item.adminOnly && user?.role !== 'admin') return null;
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
             const Icon = item.icon;
 
             return (

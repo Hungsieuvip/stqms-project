@@ -55,4 +55,17 @@ export const standardService = {
     const response = await apiClient.delete(`/requirements/${id}`);
     return response.data;
   },
+  // --- AI IMPORT ---
+  aiParse: async (formData: FormData) => {
+    const response = await apiClient.post('/standards/ai-parse', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+  aiImport: async (payload: any) => {
+    const response = await apiClient.post('/standards/ai-import', payload);
+    return response.data;
+  },
 };

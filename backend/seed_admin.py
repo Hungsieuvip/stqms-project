@@ -1,4 +1,11 @@
-import asyncio
+import sys
+import os
+
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+import app.models.rbac
 from app.core.security import get_password_hash
 from app.models.user import User
 from app.core.config import settings
@@ -42,5 +49,13 @@ def seed():
     finally:
         db.close()
 
+    # Seed tài khoản khách (Viewer / Guest)
+    try:
+        from seed_guest import seed_guest
+        seed_guest()
+    except Exception as e:
+        print(f"Lỗi khi seed guest: {e}")
+
 if __name__ == "__main__":
     seed()
+
