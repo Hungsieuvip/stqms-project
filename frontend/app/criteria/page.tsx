@@ -55,8 +55,26 @@ export default function CriteriaPage() {
     setInitialAdd(false);
   };
 
+  const handleDeleteCriterion = async (crit: Criterion) => {
+    if (!canManage) {
+      alert('Bạn không có quyền xóa tiêu chí!');
+      return;
+    }
+    if (window.confirm(`Bạn có chắc chắn muốn xóa tiêu chí "${crit.code} - ${crit.name}"?`)) {
+      try {
+        await standardService.deleteCriterion(crit.id);
+        fetchData();
+      } catch (err: any) {
+        alert(err.response?.data?.detail || 'Xóa tiêu chí thất bại.');
+      }
+    }
+  };
+
+  // Lọc bỏ các tiêu chuẩn INACTIVE
+  const activeStandards = standards.filter(std => (std as any).status !== 'INACTIVE' && std.is_active !== false);
+
   // Lọc tiêu chuẩn theo tab
-  const displayedStandards = standards.filter(std => {
+  const displayedStandards = activeStandards.filter(std => {
     if (selectedStandardId !== 'ALL' && std.id !== selectedStandardId) return false;
     return true;
   });
@@ -125,9 +143,9 @@ export default function CriteriaPage() {
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           }`}
         >
-          Tất cả Tiêu chuẩn ({standards.length})
+          Tất cả Tiêu chuẩn ({activeStandards.length})
         </button>
-        {standards.map(std => (
+        {activeStandards.map(std => (
           <button
             key={std.id}
             onClick={() => setSelectedStandardId(std.id)}
@@ -273,13 +291,22 @@ export default function CriteriaPage() {
                           </div>
 
                           {canManage && (
-                            <button
-                              onClick={() => handleOpenViewCriteria(std)}
-                              title="Sửa tiêu chí"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                            >
-                              <Edit size={16} />
-                            </button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleOpenViewCriteria(std)}
+                                title="Sửa tiêu chí"
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCriterion(crit)}
+                                title="Xóa tiêu chí"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>

@@ -16,8 +16,21 @@ export const standardService = {
     return response.data;
   },
   deleteStandard: async (id: string) => {
-    const response = await apiClient.delete(`/standards/${id}`);
-    return response.data;
+    try {
+      const response = await apiClient.delete(`/standards/${id}`);
+      return response.data;
+    } catch (err: any) {
+      // Nếu backend chưa hỗ trợ DELETE (405 Method Not Allowed), chuyển sang soft delete
+      if (err.response?.status === 405) {
+        console.warn('Backend 405 on DELETE standard, falling back to PUT status INACTIVE...');
+        const response = await apiClient.put(`/standards/${id}`, {
+          status: 'INACTIVE',
+          is_active: false
+        });
+        return response.data;
+      }
+      throw err;
+    }
   },
 
   // --- CRITERIA ---
@@ -55,6 +68,7 @@ export const standardService = {
     const response = await apiClient.delete(`/requirements/${id}`);
     return response.data;
   },
+
   // --- AI IMPORT ---
   aiParse: async (formData: FormData) => {
     const response = await apiClient.post('/standards/ai-parse', formData, {

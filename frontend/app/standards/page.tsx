@@ -97,6 +97,23 @@ export default function StandardsPage() {
     }
   };
 
+  const handleDeleteCriterion = async (crit: Criterion) => {
+    if (!canManage) {
+      alert('Bạn không có quyền xóa tiêu chí!');
+      return;
+    }
+
+    if (window.confirm(`Bạn có chắc chắn muốn xóa tiêu chí "${crit.code} - ${crit.name}"?`)) {
+      try {
+        await standardService.deleteCriterion(crit.id);
+        showToast('Đã xóa tiêu chí thành công!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.response?.data?.detail || 'Xóa tiêu chí thất bại. Vui lòng thử lại sau.', 'error');
+      }
+    }
+  };
+
   const handleOpenAddCriteria = (standard: Standard) => {
     setSelectedStandard(standard);
     setIsInitialAddCriteria(true);
@@ -107,8 +124,10 @@ export default function StandardsPage() {
     setIsInitialAddCriteria(false);
   };
 
-  // Lọc dữ liệu client-side
+  // Lọc dữ liệu client-side (Ẩn các tiêu chuẩn INACTIVE)
   const filteredData = data.filter(item => {
+    if ((item as any).status === 'INACTIVE' || item.is_active === false) return false;
+
     const matchStd = item.name?.toLowerCase().includes(searchText.toLowerCase()) || 
                      item.code?.toLowerCase().includes(searchText.toLowerCase());
     const matchCrit = item.criteria?.some(c => 
@@ -347,6 +366,13 @@ export default function StandardsPage() {
                                           className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
                                         >
                                           <Edit size={15} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteCriterion(crit)}
+                                          title="Xóa tiêu chí này"
+                                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                        >
+                                          <Trash2 size={15} />
                                         </button>
                                       </div>
                                     ) : (
