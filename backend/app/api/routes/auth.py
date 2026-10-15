@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -24,13 +24,35 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 @router.post("/login", response_model=TokenResponse)
-def login(
-    username: str = Form(...),
-    password: str = Form(...),
+async def login(
+    request: Request,
     db: Session = Depends(deps.get_db)
 ):
-    account = username.strip()
-    
+    account = ""
+    password = ""
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            account = str(body.get("username_or_email") or body.get("username") or "").strip()
+            password = str(body.get("password") or "")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            account = str(form.get("username_or_email") or form.get("username") or "").strip()
+            password = str(form.get("password") or "")
+        except Exception:
+            pass
+
+    if not account or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tài khoản và mật khẩu là bắt buộc",
+        )
+
     # Tìm kiếm theo cả username hoặc email (hỗ trợ username có ký tự @ như tài khoản khách)
     user = db.query(User).filter(
         (User.username == account) | (User.email == account)

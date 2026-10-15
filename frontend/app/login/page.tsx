@@ -31,10 +31,20 @@ export default function LoginPage() {
     try {
       const res = await authService.login(data.username, data.password);
       if (res.access_token) {
-        login(res.access_token);
+        login(res.access_token, res.user);
       }
     } catch (error: any) {
-      setErrorMsg(error.response?.data?.detail || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+      console.error('Login error:', error);
+      const detail = error.response?.data?.detail;
+      let msg = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin tài khoản và mật khẩu.';
+      if (typeof detail === 'string') {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+      } else if (detail && typeof detail === 'object') {
+        msg = JSON.stringify(detail);
+      }
+      setErrorMsg(msg);
     }
   };
 
@@ -85,7 +95,7 @@ export default function LoginPage() {
                   placeholder="••••••••"
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-500 focus:outline-none">
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-500 focus:outline-none cursor-pointer">
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
@@ -95,7 +105,7 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <input {...register('remember')} type="checkbox" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                <input {...register('remember')} type="checkbox" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 <label className="ml-2 block text-sm text-gray-900">Ghi nhớ đăng nhập</label>
               </div>
               <div className="text-sm">
@@ -106,7 +116,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? 'Đang xác thực...' : 'Đăng nhập hệ thống'}
             </button>
@@ -133,7 +143,7 @@ export default function LoginPage() {
                     setValue('username', 'Passview123@');
                     setValue('password', 'Passview123@');
                   }}
-                  className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md transition shadow-xs"
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md transition shadow-xs cursor-pointer"
                 >
                   Điền nhanh
                 </button>
