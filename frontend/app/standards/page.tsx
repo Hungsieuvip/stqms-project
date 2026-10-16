@@ -48,7 +48,7 @@ export default function StandardsPage() {
     setError(null);
     try {
       const res = await standardService.getStandards();
-      const items = Array.isArray(res) ? res : (res.items || res.data || []);
+      const items: any[] = Array.isArray(res) ? res : ((res as any)?.items || (res as any)?.data || []);
       setData(items);
       // Mặc định mở rộng tất cả các tiêu chuẩn để dễ theo dõi
       const expMap: Record<string, boolean> = {};
@@ -67,6 +67,18 @@ export default function StandardsPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleSyncDatabase = async () => {
+    if (!window.confirm('Hệ thống sẽ đồng bộ và làm sạch cơ sở dữ liệu: kích hoạt lại đầy đủ bộ tiêu chuẩn Thông tư 57 và loại bỏ các tiêu chuẩn thừa. Bạn có muốn tiếp tục?')) return;
+    try {
+      showToast('Đang tiến hành đồng bộ cơ sở dữ liệu...', 'success');
+      await standardService.syncDatabase();
+      showToast('Đã đồng bộ cơ sở dữ liệu Thông tư 57 thành công!', 'success');
+      fetchData();
+    } catch (err: any) {
+      showToast('Đồng bộ cơ sở dữ liệu thất bại. Vui lòng thử lại!', 'error');
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedStandardIds(prev => ({
@@ -201,6 +213,15 @@ export default function StandardsPage() {
 
             {canManage && (
               <>
+                <button 
+                  onClick={handleSyncDatabase}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-xs text-xs font-semibold cursor-pointer"
+                  title="Đồng bộ sạch sẽ cơ sở dữ liệu theo Thông tư 57, loại bỏ toàn bộ tiêu chuẩn cũ thừa"
+                >
+                  <RefreshCw size={15} />
+                  <span>Đồng bộ Database</span>
+                </button>
+
                 <button 
                   onClick={() => setIsAIModalOpen(true)}
                   className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white rounded-lg transition shadow-xs text-sm font-semibold cursor-pointer"

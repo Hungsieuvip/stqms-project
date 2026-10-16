@@ -31,7 +31,7 @@ export default function CriteriaPage() {
     setError(null);
     try {
       const res = await standardService.getStandards();
-      const items = Array.isArray(res) ? res : (res.items || res.data || []);
+      const items: any[] = Array.isArray(res) ? res : ((res as any)?.items || (res as any)?.data || []);
       setStandards(items);
     } catch (err: any) {
       console.error(err);

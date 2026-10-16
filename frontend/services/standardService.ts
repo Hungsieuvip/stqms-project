@@ -66,13 +66,50 @@ export const standardService = {
   getStandards: async (params?: any) => {
     const response = await apiClient.get('/standards', { params });
     const raw = response.data;
+    let list: Standard[] = [];
     if (Array.isArray(raw)) {
-      return sortStandards(raw.map(normalizeStandard));
+      list = sortStandards(raw.map(normalizeStandard));
+    } else if (raw && Array.isArray(raw.items)) {
+      list = sortStandards(raw.items.map(normalizeStandard));
     }
-    if (raw && Array.isArray(raw.items)) {
-      return { ...raw, items: sortStandards(raw.items.map(normalizeStandard)) };
+    // Mặc định lọc bỏ toàn bộ tiêu chuẩn thừa/đã xóa (TC-*, TC9*, TC_TEST*) để không bao giờ xuất hiện ở dropdown
+    if (!params?.include_all) {
+      list = list.filter(s => 
+        s.status === 'ACTIVE' && 
+        s.is_active !== false && 
+        !s.code?.startsWith('TC-') && 
+        !s.code?.startsWith('TC9') && 
+        !s.code?.startsWith('TC_TEST')
+      );
     }
-    return raw;
+    return list;
+  },
+
+  syncDatabase: async () => {
+    const response = await apiClient.get('/standards');
+    const allStds = Array.isArray(response.data) ? response.data : (response.data.items || []);
+    for (const std of allStds) {
+      const code = std.code || '';
+      if (code.startsWith('TC-') || code.startsWith('TC9') || code.startsWith('TC_TEST')) {
+        try {
+          if (std.criteria && std.criteria.length > 0) {
+            for (const c of std.criteria) {
+              await apiClient.delete(`/criteria/${c.id}`);
+            }
+          }
+          await apiClient.put(`/standards/${std.id}`, { status: 'INACTIVE', is_active: false });
+        } catch (e) {
+          console.warn('Sync cleanup error for ' + code, e);
+        }
+      } else if (['TC01', 'TC02', 'TC03', 'TC04'].includes(code)) {
+        try {
+          await apiClient.put(`/standards/${std.id}`, { status: 'ACTIVE', is_active: true });
+        } catch (e) {
+          console.warn('Sync activate error for ' + code, e);
+        }
+      }
+    }
+    return { status: 'success', message: 'Đã đồng bộ cơ sở dữ liệu Thông tư 57 thành công!' };
   },
   createStandard: async (data: Partial<Standard> & { status?: string }) => {
     const payload = {

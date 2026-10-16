@@ -35,16 +35,23 @@ export default function EvidenceModal({ isOpen, onClose, onSuccess }: Props) {
   const [selectedCriterionId, setSelectedCriterionId] = useState<string>('');
   const [attachedCriteria, setAttachedCriteria] = useState<AttachedCriterion[]>([]);
 
-  // Tải danh sách bộ tiêu chuẩn khi mở modal
+  // Tải danh sách bộ tiêu chuẩn khi mở modal (Chỉ lấy tiêu chuẩn ACTIVE hợp lệ)
   useEffect(() => {
     if (isOpen) {
       setError('');
       setProgress(0);
       standardService.getStandards().then((res) => {
-        const items = Array.isArray(res) ? res : (res.items || res.data || []);
-        setStandards(items);
-        if (items.length > 0) {
-          setSelectedStandardId(items[0].id);
+        const items: any[] = Array.isArray(res) ? res : ((res as any)?.items || (res as any)?.data || []);
+        // Lọc nghiêm ngặt chỉ lấy các tiêu chuẩn ACTIVE (TC01 -> TC04), loại bỏ hoàn toàn TC- và tiêu chuẩn rác
+        const activeItems = items.filter((s: any) => 
+          (s.status === 'ACTIVE' || s.is_active !== false) && 
+          !s.code?.startsWith('TC-') && 
+          !s.code?.startsWith('TC_TEST') && 
+          !s.code?.startsWith('TC9')
+        );
+        setStandards(activeItems);
+        if (activeItems.length > 0) {
+          setSelectedStandardId(activeItems[0].id);
         }
       }).catch(console.error);
     }
@@ -54,7 +61,7 @@ export default function EvidenceModal({ isOpen, onClose, onSuccess }: Props) {
   useEffect(() => {
     if (selectedStandardId) {
       standardService.getCriteria({ standard_id: selectedStandardId }).then((res) => {
-        const items = Array.isArray(res) ? res : (res.items || res.data || []);
+        const items: any[] = Array.isArray(res) ? res : ((res as any)?.items || (res as any)?.data || []);
         setCriteria(items);
         if (items.length > 0) {
           setSelectedCriterionId(items[0].id);

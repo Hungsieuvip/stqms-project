@@ -82,7 +82,7 @@ async function importFallbackCRUD(parsedData: any) {
   let existingList: any[] = [];
   try {
     const res = await standardService.getStandards();
-    existingList = Array.isArray(res) ? res : (res.items || res.data || []);
+    existingList = Array.isArray(res) ? res : ((res as any)?.items || (res as any)?.data || []);
   } catch (e) {
     console.warn('Could not fetch existing standards for fallback', e);
   }
@@ -116,7 +116,7 @@ async function importFallbackCRUD(parsedData: any) {
         // Khôi phục standard ID từ danh sách nếu đã tồn tại trong DB
         try {
           const fresh = await standardService.getStandards();
-          const list = Array.isArray(fresh) ? fresh : (fresh.items || fresh.data || []);
+          const list = Array.isArray(fresh) ? fresh : ((fresh as any)?.items || (fresh as any)?.data || []);
           const found = list.find((s: any) => (s.code || '').trim().toUpperCase() === codeKey);
           if (found) {
             stdId = found.id;

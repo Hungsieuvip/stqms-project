@@ -21,6 +21,8 @@ interface EvidenceItem {
   status: string;
   created_at: string;
   uploader_name?: string;
+  review_comment?: string;
+  comments?: any[];
   criteria?: Array<{
     criteria_id: string;
     criterion?: {
@@ -43,6 +45,23 @@ export default function EvidencesPage() {
   // Search & Filter
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Modal từ chối minh chứng kèm lý do
+  const [rejectModal, setRejectModal] = useState<{
+    isOpen: boolean;
+    id: string;
+    code?: string;
+    name?: string;
+    reason: string;
+    isSubmitting: boolean;
+  }>({
+    isOpen: false,
+    id: '',
+    code: '',
+    name: '',
+    reason: '',
+    isSubmitting: false
+  });
 
   const fetchEvidences = async () => {
     setLoading(true);
@@ -73,21 +92,67 @@ export default function EvidencesPage() {
     }
   };
 
-  const handleWorkflow = async (id: string, status: 'APPROVED' | 'REJECTED') => {
+  const handleApprove = async (item: EvidenceItem) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn phê duyệt minh chứng "${item.code} - ${item.name || item.file_name}"?`)) {
+      return;
+    }
     try {
-      await evidenceService.updateStatus(id, status);
+      setEvidences(prev => prev.map(e => e.id === item.id ? { ...e, status: 'APPROVED' } : e));
+      await evidenceService.approveEvidence(item.id);
+      alert('Đã phê duyệt minh chứng thành công!');
       fetchEvidences();
     } catch (err: any) {
-      alert(err.response?.data?.detail || "Cập nhật trạng thái thất bại.");
+      alert(err.response?.data?.detail || 'Phê duyệt thất bại. Vui lòng thử lại!');
+      fetchEvidences();
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const handleOpenReject = (item: EvidenceItem) => {
+    setRejectModal({
+      isOpen: true,
+      id: item.id,
+      code: item.code,
+      name: item.name || item.file_name || 'Minh chứng',
+      reason: '',
+      isSubmitting: false
+    });
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal.reason || !rejectModal.reason.trim()) {
+      alert('Vui lòng nhập lý do từ chối để gửi thông báo cho người tải lên!');
+      return;
+    }
+    setRejectModal(prev => ({ ...prev, isSubmitting: true }));
+    try {
+      const reason = rejectModal.reason.trim();
+      setEvidences(prev => prev.map(e => e.id === rejectModal.id ? { ...e, status: 'REJECTED', review_comment: reason } : e));
+      await evidenceService.rejectEvidence(rejectModal.id, reason);
+      alert('Đã từ chối minh chứng và gửi thông báo lý do thành công!');
+      setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false });
+      fetchEvidences();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Từ chối minh chứng thất bại!');
+      setRejectModal(prev => ({ ...prev, isSubmitting: false }));
+      fetchEvidences();
+    }
+  };
+
+  const getStatusBadge = (status: string, comment?: string) => {
     switch (status) {
       case 'APPROVED': 
-        return <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">Đã duyệt</span>;
+        return <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><CheckCircle size={12} /> Đã duyệt</span>;
       case 'REJECTED': 
-        return <span className="px-2.5 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-semibold">Từ chối</span>;
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><XCircle size={12} /> Từ chối</span>
+            {comment && <span className="text-[11px] text-rose-600 italic line-clamp-1 max-w-[160px]" title={comment}>Lý do: {comment}</span>}
+          </div>
+        );
+      case 'PASSED':
+        return <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold">Đạt sơ bộ</span>;
+      case 'SUBMITTED':
+        return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">Đã nộp</span>;
       default: 
         return <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold">Chờ duyệt</span>;
     }
@@ -231,7 +296,7 @@ export default function EvidencesPage() {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(item.status)}
+                      {getStatusBadge(item.status, item.review_comment)}
                     </td>
 
                     <td className="px-6 py-4 text-right whitespace-nowrap">
@@ -253,18 +318,18 @@ export default function EvidencesPage() {
                           <>
                             {item.status !== 'APPROVED' && (
                               <button 
-                                onClick={() => handleWorkflow(item.id, 'APPROVED')} 
+                                onClick={() => handleApprove(item)} 
                                 title="Phê duyệt minh chứng" 
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
                               >
                                 <CheckCircle size={16} />
                               </button>
                             )}
                             {item.status !== 'REJECTED' && (
                               <button 
-                                onClick={() => handleWorkflow(item.id, 'REJECTED')} 
-                                title="Từ chối minh chứng" 
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                onClick={() => handleOpenReject(item)} 
+                                title="Từ chối minh chứng (kèm lý do)" 
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                               >
                                 <XCircle size={16} />
                               </button>
