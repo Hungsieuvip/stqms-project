@@ -81,14 +81,17 @@ export default function EvidencesPage() {
   }, [search, statusFilter]);
 
   const handleDelete = async () => {
+    const idToDelete = deleteData.id;
+    setDeleteData({ isOpen: false, id: '' });
+    // Cập nhật giao diện ngay lập tức
+    setEvidences(prev => prev.filter(e => e.id !== idToDelete));
     try {
-      await evidenceService.deleteEvidence(deleteData.id);
-      setEvidences(evidences.filter(e => e.id !== deleteData.id));
+      await evidenceService.deleteEvidence(idToDelete);
       alert("Đã xóa minh chứng thành công!");
+      fetchEvidences();
     } catch (err: any) {
       alert(err.response?.data?.detail || "Xóa minh chứng thất bại!");
-    } finally {
-      setDeleteData({ isOpen: false, id: '' });
+      fetchEvidences();
     }
   };
 
@@ -371,6 +374,61 @@ export default function EvidencesPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteData({ isOpen: false, id: '' })}
       />
+
+      {/* Modal Nhập lý do từ chối minh chứng & gửi thông báo */}
+      {rejectModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
+            <div className="flex items-center gap-3 mb-4 text-rose-600">
+              <div className="p-2.5 bg-rose-50 rounded-xl">
+                <XCircle size={26} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Từ chối Minh chứng & Gửi phản hồi</h3>
+                <p className="text-xs text-slate-500">Mã: <span className="font-mono font-bold text-slate-700">{rejectModal.code}</span> — {rejectModal.name}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Lý do từ chối minh chứng <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={rejectModal.reason}
+                  onChange={(e) => setRejectModal(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Nhập chi tiết lý do từ chối để thông báo cho người gửi (Ví dụ: Thiếu chữ ký xác nhận của BGH, ảnh chụp mờ, không đúng năm học...)"
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+                  autoFocus
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  * Lý do này sẽ được ghi nhận vào lịch sử trao đổi và gửi thông báo phản hồi cho người tải lên.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={rejectModal.isSubmitting}
+                  onClick={() => setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false })}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={rejectModal.isSubmitting}
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {rejectModal.isSubmitting ? 'Đang gửi thông báo...' : 'Xác nhận Từ chối & Gửi thông báo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

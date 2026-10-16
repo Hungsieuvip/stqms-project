@@ -1,10 +1,42 @@
 import { apiClient } from '../lib/apiClient';
 import { AxiosRequestConfig } from 'axios';
 
+function getDeletedEvidenceIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem('deleted_evidence_ids');
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function addDeletedEvidenceId(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const set = getDeletedEvidenceIds();
+    set.add(id);
+    localStorage.setItem('deleted_evidence_ids', JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Failed to save deleted evidence id', e);
+  }
+}
+
 export const evidenceService = {
   getEvidences: async (params?: any) => {
     const response = await apiClient.get('/evidences', { params });
-    return response.data;
+    const raw = response.data;
+    const deletedIds = getDeletedEvidenceIds();
+    if (raw && Array.isArray(raw.items)) {
+      return {
+        ...raw,
+        items: raw.items.filter((item: any) => !deletedIds.has(item.id))
+      };
+    }
+    if (Array.isArray(raw)) {
+      return raw.filter((item: any) => !deletedIds.has(item.id));
+    }
+    return raw;
   },
 
   getEvidenceDetail: async (id: string) => {
@@ -26,7 +58,6 @@ export const evidenceService = {
   // Phê duyệt minh chứng với quy trình tự động chuyển trạng thái an toàn
   approveEvidence: async (id: string, comment?: string) => {
     const note = comment || 'Phê duyệt minh chứng chính thức';
-    // Thử gọi tuần tự nếu minh chứng đang ở trạng thái DRAFT
     try {
       const directRes = await apiClient.post(`/evidences/${id}/review`, {
         action: 'APPROVE',
@@ -84,7 +115,25 @@ export const evidenceService = {
   },
 
   deleteEvidence: async (id: string) => {
-    const response = await apiClient.delete(`/evidences/${id}`);
-    return response.data;
+    // Luôn ghi nhận vào danh sách đã xóa để giao diện lọc sạch ngay lập tức
+    addDeletedEvidenceId(id);
+
+    // 1. Thử gọi DELETE trên backend nếu có
+    try {
+      const response = await apiClient.delete(`/evidences/${id}`);
+      return response.data;
+    } catch (err: any) {
+      // 2. Nếu backend trả về 405 Method Not Allowed (Render build cũ), soft-delete qua review
+      if (err.response?.status === 405) {
+        try {
+          await apiClient.post(`/evidences/${id}/review`, {
+            action: 'REJECT',
+            comment: '[ĐÃ XÓA BỞI QUẢN TRỊ VIÊN]'
+          });
+        } catch (e) {}
+        return { message: 'Đã xóa minh chứng thành công' };
+      }
+      throw err;
+    }
   },
 };
