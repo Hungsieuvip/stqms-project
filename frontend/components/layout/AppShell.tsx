@@ -55,14 +55,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Brand Header */}
-        <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-blue-600 text-white rounded-lg">
+        <div className="h-16 px-5 flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-xs shrink-0">
               <ShieldCheck size={22} />
             </div>
-            <div>
-              <span className="font-bold text-white tracking-wide text-base">STQMS</span>
-              <span className="block text-[10px] text-slate-400 uppercase tracking-wider">Hệ thống QLCL</span>
+            <div className="truncate">
+              <span className="font-bold text-white tracking-wide text-sm block truncate">TH HỢP MINH</span>
+              <span className="block text-[10px] text-blue-400 font-medium tracking-wide uppercase truncate">Tiểu học Hợp Minh</span>
             </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
@@ -129,8 +129,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Menu size={20} />
             </button>
             <div className="hidden sm:block">
-              <span className="text-xs text-slate-400">Không gian làm việc / </span>
-              <span className="text-xs font-medium text-slate-700">Đại học & Quản trị Tiêu chuẩn</span>
+              <span className="text-xs text-slate-400">Trường Tiểu học Hợp Minh / </span>
+              <span className="text-xs font-semibold text-blue-700">Hệ thống Đảm bảo Chất lượng Giáo dục (Thông tư 57)</span>
             </div>
           </div>
         </header>

@@ -93,11 +93,14 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full shrink-0">
       {/* Logo Area */}
-      <div className="h-16 flex items-center px-6 bg-slate-950/50 border-b border-slate-800">
-        <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center mr-3 font-bold text-white">
-          ST
+      <div className="h-16 flex items-center px-5 bg-slate-950/50 border-b border-slate-800">
+        <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center mr-3 font-bold text-white text-xs shrink-0">
+          HM
         </div>
-        <span className="text-white font-semibold tracking-wide text-lg">STQMS</span>
+        <div className="truncate">
+          <span className="text-white font-semibold tracking-wide text-sm block truncate">TH HỢP MINH</span>
+          <span className="text-[10px] text-slate-400 block truncate">Đảm bảo Chất lượng GD</span>
+        </div>
       </div>
 
       {/* Menu Area */}

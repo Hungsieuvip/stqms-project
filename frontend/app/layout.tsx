@@ -8,8 +8,8 @@ import AppShell from '../components/layout/AppShell';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'STQMS - Hệ thống Quản lý Chất lượng',
-  description: 'Phần mềm quản lý tiêu chuẩn và minh chứng',
+  title: 'Trường Tiểu học Hợp Minh - Hệ thống Quản lý Đảm bảo Chất lượng',
+  description: 'Hệ thống Quản lý Đảm bảo Chất lượng Giáo dục - Trường Tiểu học Hợp Minh (theo Thông tư 57/2026/TT-BGDĐT)',
 };
 
 export default function RootLayout({

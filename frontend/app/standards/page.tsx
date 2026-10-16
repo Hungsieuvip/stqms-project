@@ -167,7 +167,7 @@ export default function StandardsPage() {
               )}
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Hệ thống tiêu chuẩn theo Thông tư 57/2026/TT-BGDĐT. Cho phép quản lý, sửa chữa tiêu chuẩn và thêm tiêu chí vào từng tiêu chuẩn cụ thể.
+              Trường Tiểu học Hợp Minh — Hệ thống tiêu chuẩn kiểm định chất lượng theo Thông tư 57/2026/TT-BGDĐT. Quản lý, chuẩn hóa tiêu chuẩn và gắn tiêu chí minh chứng.
             </p>
           </div>
 

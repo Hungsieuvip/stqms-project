@@ -48,7 +48,7 @@ export default function DashboardPage() {
             Xin chào, {user?.full_name || user?.email} 👋
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Tổng quan trạng thái quản lý chất lượng và tiến độ kiểm định.
+            Trường Tiểu học Hợp Minh — Tổng quan trạng thái đảm bảo chất lượng và tiến độ kiểm định giáo dục (Thông tư 57/2026/TT-BGDĐT).
           </p>
         </div>
       </div>

@@ -50,12 +50,19 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center text-blue-600">
-          <ShieldCheck size={48} />
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+        <div className="flex justify-center text-blue-600 mb-2">
+          <ShieldCheck size={52} />
         </div>
-        <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900">STQMS</h2>
-        <p className="mt-2 text-center text-sm text-gray-600">Hệ thống Quản lý Chất lượng Tiêu chuẩn</p>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight uppercase">
+          Trường Tiểu học Hợp Minh
+        </h2>
+        <p className="mt-1 text-sm font-semibold text-blue-700">
+          Hệ thống Quản lý Đảm bảo Chất lượng Giáo dục (STQMS)
+        </p>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Theo quy chuẩn Thông tư 57/2026/TT-BGDĐT
+        </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -76,7 +83,7 @@ export default function LoginPage() {
                 <input
                   {...register('username')}
                   className={`block w-full pl-10 px-3 py-2 border ${errors.username ? 'border-red-300' : 'border-gray-300'} rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
-                  placeholder="admin@stqms.vn"
+                  placeholder="Tài khoản hoặc email..."
                 />
               </div>
               {errors.username && <p className="mt-1 text-sm text-red-600">{errors.username.message}</p>}

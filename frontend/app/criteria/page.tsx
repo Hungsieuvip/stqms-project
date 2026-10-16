@@ -93,7 +93,7 @@ export default function CriteriaPage() {
                 Danh mục Tiêu chí & Yêu cầu Đảm bảo Chất lượng
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Theo dõi chỉ số phủ minh chứng và mức độ đạt chuẩn theo từng chỉ báo yêu cầu của Thông tư 57/2026/TT-BGDĐT
+                Trường Tiểu học Hợp Minh — Theo dõi chỉ số phủ minh chứng và mức độ đạt chuẩn theo Thông tư 57/2026/TT-BGDĐT
               </p>
             </div>
           </div>
