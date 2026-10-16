@@ -124,9 +124,10 @@ export default function StandardsPage() {
     setIsInitialAddCriteria(false);
   };
 
-  // Lọc dữ liệu client-side (Ẩn các tiêu chuẩn INACTIVE)
+  // Lọc dữ liệu client-side (Ẩn các tiêu chuẩn cũ thừa TC-1..TC-5)
   const filteredData = data.filter(item => {
-    if ((item as any).status === 'INACTIVE' || item.is_active === false) return false;
+    if (item.code?.startsWith('TC-') && (!item.criteria || item.criteria.length === 0)) return false;
+    if ((item as any).status === 'INACTIVE' && (!item.criteria || item.criteria.length === 0)) return false;
 
     const matchStd = item.name?.toLowerCase().includes(searchText.toLowerCase()) || 
                      item.code?.toLowerCase().includes(searchText.toLowerCase());

@@ -118,6 +118,7 @@ async function importFallbackCRUD(parsedData: any) {
         await standardService.updateStandard(stdId, {
           name: std.name,
           description: std.description,
+          status: 'ACTIVE',
           is_active: true
         });
         syncedStds++;

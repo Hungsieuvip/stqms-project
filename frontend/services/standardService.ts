@@ -14,12 +14,13 @@ function normalizeCriterion(c: any): Criterion {
 
 function normalizeStandard(s: any): Standard {
   if (!s) return s;
-  const is_active = s.status ? s.status === 'ACTIVE' : (s.is_active !== false);
+  const isRedundant = s.code?.startsWith('TC-') && (!s.criteria || s.criteria.length === 0);
+  const is_active = !isRedundant && (s.status === 'ACTIVE' || (s.criteria && s.criteria.length > 0) || s.is_active !== false);
   const criteria = Array.isArray(s.criteria) ? s.criteria.map(normalizeCriterion) : [];
   return {
     ...s,
     is_active,
-    status: s.status || (is_active ? 'ACTIVE' : 'INACTIVE'),
+    status: is_active ? 'ACTIVE' : 'INACTIVE',
     criteria
   };
 }
@@ -37,12 +38,20 @@ export const standardService = {
     }
     return raw;
   },
-  createStandard: async (data: Partial<Standard>) => {
-    const response = await apiClient.post('/standards', data);
+  createStandard: async (data: Partial<Standard> & { status?: string }) => {
+    const payload = {
+      ...data,
+      status: data.status || (data.is_active === false ? 'INACTIVE' : 'ACTIVE')
+    };
+    const response = await apiClient.post('/standards', payload);
     return normalizeStandard(response.data);
   },
-  updateStandard: async (id: string, data: Partial<Standard>) => {
-    const response = await apiClient.put(`/standards/${id}`, data);
+  updateStandard: async (id: string, data: Partial<Standard> & { status?: string }) => {
+    const payload = {
+      ...data,
+      status: data.status || (data.is_active !== undefined ? (data.is_active ? 'ACTIVE' : 'INACTIVE') : 'ACTIVE')
+    };
+    const response = await apiClient.put(`/standards/${id}`, payload);
     return normalizeStandard(response.data);
   },
   deleteStandard: async (id: string) => {
@@ -50,7 +59,6 @@ export const standardService = {
       const response = await apiClient.delete(`/standards/${id}`);
       return response.data;
     } catch (err: any) {
-      // Nếu backend chưa hỗ trợ DELETE (405 Method Not Allowed), chuyển sang soft delete
       if (err.response?.status === 405) {
         console.warn('Backend 405 on DELETE standard, falling back to PUT status INACTIVE...');
         const response = await apiClient.put(`/standards/${id}`, {

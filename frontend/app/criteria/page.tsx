@@ -70,8 +70,12 @@ export default function CriteriaPage() {
     }
   };
 
-  // Lọc bỏ các tiêu chuẩn INACTIVE
-  const activeStandards = standards.filter(std => (std as any).status !== 'INACTIVE' && std.is_active !== false);
+  // Lọc bỏ các tiêu chuẩn cũ thừa (TC-1 đến TC-5)
+  const activeStandards = standards.filter(std => {
+    if (std.code?.startsWith('TC-') && (!std.criteria || std.criteria.length === 0)) return false;
+    if ((std as any).status === 'INACTIVE' && (!std.criteria || std.criteria.length === 0)) return false;
+    return true;
+  });
 
   // Lọc tiêu chuẩn theo tab
   const displayedStandards = activeStandards.filter(std => {
