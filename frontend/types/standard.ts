@@ -4,7 +4,9 @@ export interface Requirement {
   code: string;
   description: string;
   sequence_num: number;
+  sequence?: number;
   is_active: boolean;
+  status?: string;
 }
 
 export interface Criterion {
@@ -14,7 +16,9 @@ export interface Criterion {
   name: string;
   description?: string | null;
   sequence_num: number;
+  sequence?: number;
   is_active: boolean;
+  status?: string;
   requirements?: Requirement[];
 }
 
@@ -24,6 +28,9 @@ export interface Standard {
   name: string;
   description?: string | null;
   issued_date?: string | null;
+  sequence?: number;
+  sequence_num?: number;
   is_active: boolean;
+  status?: string;
   criteria?: Criterion[];
 }

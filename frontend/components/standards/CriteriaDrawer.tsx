@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { standardService } from '../../services/standardService';
+import { standardService, sortCriteria } from '../../services/standardService';
 import { Standard, Criterion } from '../../types/standard';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
@@ -149,10 +149,12 @@ export default function CriteriaDrawer({ standard, isOpen, onClose, initialAdd }
   const handleDeleteCriterion = async (id: string, name: string) => {
     if (!window.confirm(`Bạn có chắc muốn xóa tiêu chí "${name}"?`)) return;
     try {
+      setCriteria(prev => prev.filter(c => c.id !== id));
       await standardService.deleteCriterion(id);
       fetchCriteria();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Xóa tiêu chí thất bại.');
+      fetchCriteria();
     }
   };
 
@@ -167,9 +169,11 @@ export default function CriteriaDrawer({ standard, isOpen, onClose, initialAdd }
     }
   };
 
-  const filteredCriteria = criteria.filter(c => 
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.code?.toLowerCase().includes(search.toLowerCase())
+  const filteredCriteria = sortCriteria(
+    criteria.filter(c => 
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.code?.toLowerCase().includes(search.toLowerCase())
+    )
   );
 
   return (

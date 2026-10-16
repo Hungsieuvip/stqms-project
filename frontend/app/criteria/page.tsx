@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { standardService } from '../../services/standardService';
+import { standardService, sortStandards, sortCriteria } from '../../services/standardService';
 import { Standard, Criterion } from '../../types/standard';
 import { useAuth } from '../../contexts/AuthContext';
 import CriteriaDrawer from '../../components/standards/CriteriaDrawer';
@@ -62,20 +62,31 @@ export default function CriteriaPage() {
     }
     if (window.confirm(`Bạn có chắc chắn muốn xóa tiêu chí "${crit.code} - ${crit.name}"?`)) {
       try {
+        // Cập nhật giao diện ngay lập tức
+        setStandards(prev => prev.map(std => ({
+          ...std,
+          criteria: (std.criteria || []).filter(c => c.id !== crit.id)
+        })));
         await standardService.deleteCriterion(crit.id);
         fetchData();
       } catch (err: any) {
         alert(err.response?.data?.detail || 'Xóa tiêu chí thất bại.');
+        fetchData();
       }
     }
   };
 
-  // Lọc bỏ các tiêu chuẩn cũ thừa (TC-1 đến TC-5)
-  const activeStandards = standards.filter(std => {
-    if (std.code?.startsWith('TC-') && (!std.criteria || std.criteria.length === 0)) return false;
-    if ((std as any).status === 'INACTIVE' && (!std.criteria || std.criteria.length === 0)) return false;
-    return true;
-  });
+  // Lọc bỏ tiêu chuẩn cũ thừa và sắp xếp theo đúng thứ tự TC01 -> TC04
+  const activeStandards = sortStandards(
+    standards.filter(std => {
+      if (std.code?.startsWith('TC-')) return false;
+      if (std.status === 'INACTIVE' || std.is_active === false) return false;
+      return true;
+    })
+  ).map(std => ({
+    ...std,
+    criteria: sortCriteria(std.criteria || [])
+  }));
 
   // Lọc tiêu chuẩn theo tab
   const displayedStandards = activeStandards.filter(std => {

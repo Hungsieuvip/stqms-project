@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { standardService } from '../../services/standardService';
+import { standardService, sortStandards, sortCriteria } from '../../services/standardService';
 import { Standard, Criterion } from '../../types/standard';
 import { useAuth } from '../../contexts/AuthContext';
 import StandardModal from '../../components/standards/StandardModal';
@@ -88,11 +88,15 @@ export default function StandardsPage() {
 
     if (window.confirm(`Bạn có chắc chắn muốn xóa bộ tiêu chuẩn "${item.code} - ${item.name}"? Hệ thống sẽ xóa toàn bộ Tiêu chí con liên quan.`)) {
       try {
-        await standardService.deleteStandard(item.id);
+        // Cập nhật giao diện ngay lập tức
+        setData(prev => prev.filter(s => s.id !== item.id));
+        showToast('Đang tiến hành xóa bộ tiêu chuẩn...');
+        await standardService.deleteStandard(item.id, item.criteria);
         showToast('Đã xóa bộ tiêu chuẩn thành công!');
         fetchData();
       } catch (err: any) {
         showToast(err.response?.data?.detail || 'Xóa thất bại. Vui lòng thử lại sau.', 'error');
+        fetchData();
       }
     }
   };
@@ -105,11 +109,18 @@ export default function StandardsPage() {
 
     if (window.confirm(`Bạn có chắc chắn muốn xóa tiêu chí "${crit.code} - ${crit.name}"?`)) {
       try {
+        // Cập nhật giao diện ngay lập tức
+        setData(prev => prev.map(std => ({
+          ...std,
+          criteria: (std.criteria || []).filter(c => c.id !== crit.id)
+        })));
+        showToast('Đang tiến hành xóa tiêu chí...');
         await standardService.deleteCriterion(crit.id);
         showToast('Đã xóa tiêu chí thành công!');
         fetchData();
       } catch (err: any) {
         showToast(err.response?.data?.detail || 'Xóa tiêu chí thất bại. Vui lòng thử lại sau.', 'error');
+        fetchData();
       }
     }
   };
@@ -124,19 +135,26 @@ export default function StandardsPage() {
     setIsInitialAddCriteria(false);
   };
 
-  // Lọc dữ liệu client-side (Ẩn các tiêu chuẩn cũ thừa TC-1..TC-5)
-  const filteredData = data.filter(item => {
-    if (item.code?.startsWith('TC-') && (!item.criteria || item.criteria.length === 0)) return false;
-    if ((item as any).status === 'INACTIVE' && (!item.criteria || item.criteria.length === 0)) return false;
+  // Lọc dữ liệu client-side và sắp xếp chuẩn theo thứ tự (TC01 -> TC04 và 1.1 -> 1.4)
+  const filteredData = sortStandards(
+    data.filter(item => {
+      // Ẩn tiêu chuẩn thừa cũ mã TC-
+      if (item.code?.startsWith('TC-')) return false;
+      // Ẩn tiêu chuẩn đã bị xóa (INACTIVE)
+      if (item.status === 'INACTIVE' || item.is_active === false) return false;
 
-    const matchStd = item.name?.toLowerCase().includes(searchText.toLowerCase()) || 
-                     item.code?.toLowerCase().includes(searchText.toLowerCase());
-    const matchCrit = item.criteria?.some(c => 
-      c.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-      c.code?.toLowerCase().includes(searchText.toLowerCase())
-    );
-    return matchStd || matchCrit;
-  });
+      const matchStd = item.name?.toLowerCase().includes(searchText.toLowerCase()) || 
+                       item.code?.toLowerCase().includes(searchText.toLowerCase());
+      const matchCrit = item.criteria?.some(c => 
+        c.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        c.code?.toLowerCase().includes(searchText.toLowerCase())
+      );
+      return matchStd || matchCrit;
+    })
+  ).map(std => ({
+    ...std,
+    criteria: sortCriteria(std.criteria || [])
+  }));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

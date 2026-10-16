@@ -104,13 +104,35 @@ async function importFallbackCRUD(parsedData: any) {
           name: std.name,
           description: std.description,
           issued_date: parsedData.issued_date || '2026-07-07',
+          status: 'ACTIVE',
           is_active: true
         });
         stdId = created.id;
         stdMap[codeKey] = created;
+        existingStd = created;
         syncedStds++;
-      } catch (err) {
-        console.error('Failed to create standard:', std.code, err);
+      } catch (err: any) {
+        console.warn('Standard creation warning (possibly duplicate):', std.code, err);
+        // Khôi phục standard ID từ danh sách nếu đã tồn tại trong DB
+        try {
+          const fresh = await standardService.getStandards();
+          const list = Array.isArray(fresh) ? fresh : (fresh.items || fresh.data || []);
+          const found = list.find((s: any) => (s.code || '').trim().toUpperCase() === codeKey);
+          if (found) {
+            stdId = found.id;
+            stdMap[codeKey] = found;
+            existingStd = found;
+            await standardService.updateStandard(stdId, {
+              name: std.name,
+              description: std.description,
+              status: 'ACTIVE',
+              is_active: true
+            });
+            syncedStds++;
+          }
+        } catch (recoverErr) {
+          console.error('Failed to recover standard:', std.code, recoverErr);
+        }
       }
     } else {
       // Đảm bảo tiêu chuẩn được kích hoạt ACTIVE và đồng bộ thông tin
@@ -130,8 +152,18 @@ async function importFallbackCRUD(parsedData: any) {
 
     if (stdId && std.criteria && std.criteria.length > 0) {
       // Map existing criteria of this standard
+      let existingCritList = existingStd?.criteria || [];
+      if (!existingCritList || existingCritList.length === 0) {
+        try {
+          const critRes = await standardService.getCriteria({ standard_id: stdId });
+          existingCritList = Array.isArray(critRes) ? critRes : (critRes.items || []);
+        } catch (e) {
+          existingCritList = [];
+        }
+      }
+
       const existingCritMap: Record<string, any> = {};
-      (existingStd?.criteria || []).forEach((c: any) => {
+      existingCritList.forEach((c: any) => {
         if (c.code) existingCritMap[c.code.trim().toUpperCase()] = c;
       });
 
@@ -144,6 +176,8 @@ async function importFallbackCRUD(parsedData: any) {
             await standardService.updateCriterion(existingCrit.id, {
               name: crit.name,
               description: crit.description,
+              sequence: crit.sequence_num || crit.sequence || 1,
+              status: 'ACTIVE',
               is_active: true
             });
             syncedCrits++;
@@ -157,7 +191,8 @@ async function importFallbackCRUD(parsedData: any) {
               code: crit.code,
               name: crit.name,
               description: crit.description,
-              sequence_num: crit.sequence_num || 1,
+              sequence: crit.sequence_num || crit.sequence || 1,
+              status: 'ACTIVE',
               is_active: true
             });
             existingCritMap[critCodeKey] = newCrit;
