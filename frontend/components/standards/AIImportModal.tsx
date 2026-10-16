@@ -87,14 +87,15 @@ async function importFallbackCRUD(parsedData: any) {
     console.warn('Could not fetch existing standards for fallback', e);
   }
 
-  const stdMap: Record<string, string> = {};
+  const stdMap: Record<string, any> = {};
   existingList.forEach((s: any) => {
-    if (s.code) stdMap[s.code.trim().toUpperCase()] = s.id;
+    if (s.code) stdMap[s.code.trim().toUpperCase()] = s;
   });
 
   for (const std of parsedData.standards || []) {
     const codeKey = (std.code || '').trim().toUpperCase();
-    let stdId = stdMap[codeKey];
+    let existingStd = stdMap[codeKey];
+    let stdId = existingStd ? existingStd.id : null;
 
     if (!stdId) {
       try {
@@ -106,27 +107,61 @@ async function importFallbackCRUD(parsedData: any) {
           is_active: true
         });
         stdId = created.id;
-        stdMap[codeKey] = stdId;
+        stdMap[codeKey] = created;
         createdStds++;
       } catch (err) {
         console.error('Failed to create standard:', std.code, err);
       }
+    } else {
+      // Đảm bảo tiêu chuẩn tồn tại được đặt status = ACTIVE
+      try {
+        await standardService.updateStandard(stdId, {
+          name: std.name,
+          description: std.description,
+          is_active: true
+        });
+      } catch (err) {
+        console.warn('Failed to update standard status:', std.code, err);
+      }
     }
 
-    if (stdId && std.criteria) {
+    if (stdId && std.criteria && std.criteria.length > 0) {
+      // Map existing criteria of this standard
+      const existingCritMap: Record<string, any> = {};
+      (existingStd?.criteria || []).forEach((c: any) => {
+        if (c.code) existingCritMap[c.code.trim().toUpperCase()] = c;
+      });
+
       for (const crit of std.criteria) {
-        try {
-          await standardService.createCriterion({
-            standard_id: stdId,
-            code: crit.code,
-            name: crit.name,
-            description: crit.description,
-            sequence_num: crit.sequence_num || 1,
-            is_active: true
-          });
-          createdCrits++;
-        } catch (err) {
-          console.error('Failed to create criterion:', crit.code, err);
+        const critCodeKey = (crit.code || '').trim().toUpperCase();
+        const existingCrit = existingCritMap[critCodeKey];
+
+        if (existingCrit) {
+          try {
+            await standardService.updateCriterion(existingCrit.id, {
+              name: crit.name,
+              description: crit.description,
+              is_active: true
+            });
+            createdCrits++;
+          } catch (err) {
+            console.error('Failed to update criterion:', crit.code, err);
+          }
+        } else {
+          try {
+            const newCrit = await standardService.createCriterion({
+              standard_id: stdId,
+              code: crit.code,
+              name: crit.name,
+              description: crit.description,
+              sequence_num: crit.sequence_num || 1,
+              is_active: true
+            });
+            existingCritMap[critCodeKey] = newCrit;
+            createdCrits++;
+          } catch (err) {
+            console.error('Failed to create criterion:', crit.code, err);
+          }
         }
       }
     }

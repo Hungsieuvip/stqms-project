@@ -1,19 +1,49 @@
 import { apiClient } from '../lib/apiClient'; 
 import { Standard, Criterion, Requirement } from '../types/standard';
 
+function normalizeCriterion(c: any): Criterion {
+  if (!c) return c;
+  const is_active = c.status ? c.status === 'ACTIVE' : (c.is_active !== false);
+  return {
+    ...c,
+    sequence_num: c.sequence_num ?? c.sequence ?? 1,
+    is_active,
+    status: c.status || (is_active ? 'ACTIVE' : 'INACTIVE')
+  };
+}
+
+function normalizeStandard(s: any): Standard {
+  if (!s) return s;
+  const is_active = s.status ? s.status === 'ACTIVE' : (s.is_active !== false);
+  const criteria = Array.isArray(s.criteria) ? s.criteria.map(normalizeCriterion) : [];
+  return {
+    ...s,
+    is_active,
+    status: s.status || (is_active ? 'ACTIVE' : 'INACTIVE'),
+    criteria
+  };
+}
+
 export const standardService = {
   // --- STANDARDS ---
   getStandards: async (params?: any) => {
     const response = await apiClient.get('/standards', { params });
-    return response.data;
+    const raw = response.data;
+    if (Array.isArray(raw)) {
+      return raw.map(normalizeStandard);
+    }
+    if (raw && Array.isArray(raw.items)) {
+      return { ...raw, items: raw.items.map(normalizeStandard) };
+    }
+    return raw;
   },
   createStandard: async (data: Partial<Standard>) => {
     const response = await apiClient.post('/standards', data);
-    return response.data;
+    return normalizeStandard(response.data);
   },
   updateStandard: async (id: string, data: Partial<Standard>) => {
     const response = await apiClient.put(`/standards/${id}`, data);
-    return response.data;
+    return normalizeStandard(response.data);
   },
   deleteStandard: async (id: string) => {
     try {
@@ -36,15 +66,32 @@ export const standardService = {
   // --- CRITERIA ---
   getCriteria: async (params?: any) => {
     const response = await apiClient.get('/criteria', { params });
-    return response.data;
+    const raw = response.data;
+    if (Array.isArray(raw)) {
+      return raw.map(normalizeCriterion);
+    }
+    if (raw && Array.isArray(raw.items)) {
+      return { ...raw, items: raw.items.map(normalizeCriterion) };
+    }
+    return raw;
   },
-  createCriterion: async (data: Partial<Criterion>) => {
-    const response = await apiClient.post('/criteria', data);
-    return response.data;
+  createCriterion: async (data: Partial<Criterion> & { sequence?: number; status?: string }) => {
+    const payload = {
+      ...data,
+      sequence: data.sequence ?? data.sequence_num ?? 1,
+      status: data.status || (data.is_active === false ? 'INACTIVE' : 'ACTIVE')
+    };
+    const response = await apiClient.post('/criteria', payload);
+    return normalizeCriterion(response.data);
   },
-  updateCriterion: async (id: string, data: Partial<Criterion>) => {
-    const response = await apiClient.put(`/criteria/${id}`, data);
-    return response.data;
+  updateCriterion: async (id: string, data: Partial<Criterion> & { sequence?: number; status?: string }) => {
+    const payload = {
+      ...data,
+      sequence: data.sequence ?? data.sequence_num,
+      status: data.status || (data.is_active !== undefined ? (data.is_active ? 'ACTIVE' : 'INACTIVE') : undefined)
+    };
+    const response = await apiClient.put(`/criteria/${id}`, payload);
+    return normalizeCriterion(response.data);
   },
   deleteCriterion: async (id: string) => {
     const response = await apiClient.delete(`/criteria/${id}`);
