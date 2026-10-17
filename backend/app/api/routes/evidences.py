@@ -1,19 +1,30 @@
-import json
-import os
 import uuid
-from typing import List, Optional
-from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, status
+import os
+import json
+from datetime import date, datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 
 from app.api import deps
-from app.models.evidence import Evidence, EvidenceCriteria, Document, DocumentVersion
+from app.models.evidence import Evidence, EvidenceCriteria, Document, DocumentVersion, EvidenceReviewLog
 from app.models.quality import Criterion, Standard
 from app.models.user import User
 from app.schemas.evidence import EvidenceCreate, EvidenceResponse, WorkflowUpdate
 from app.services import file_service
+from app.core.state_machine import (
+    validate_evidence_transition,
+    is_reviewer_transition,
+    is_author_transition,
+    get_available_transitions,
+    STATUS_LABELS,
+    REJECTION_REQUIRED_STATES,
+)
+from app.services.notification_service import notify_evidence_status_change
+from app.services.audit_service import log_audit
 
 router = APIRouter()
 
@@ -41,6 +52,9 @@ def serialize_evidence(ev: Evidence, db: Session) -> dict:
         "provider": ev.provider,
         "status": ev.status,
         "author_id": ev.author_id,
+        "rejection_reason": ev.rejection_reason,
+        "reviewed_by": ev.reviewed_by,
+        "reviewed_at": ev.reviewed_at,
         "created_at": ev.created_at,
         "criteria": [],
         "documents": [],
@@ -119,7 +133,7 @@ def upload_and_create_evidence(
     file: UploadFile = File(...),
     title: str = Form(...),
     description: Optional[str] = Form(None),
-    criteria_ids: Optional[str] = Form(None), # Chuỗi JSON danh sách ID tiêu chí hoặc phân tách bằng dấu phẩy
+    criteria_ids: Optional[str] = Form(None),
     primary_criteria_id: Optional[str] = Form(None),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.RequirePermissions(["evidence.create"]))
@@ -128,12 +142,10 @@ def upload_and_create_evidence(
     parsed_criteria_ids = []
     if criteria_ids:
         try:
-            # Thử decode JSON
             loaded = json.loads(criteria_ids)
             if isinstance(loaded, list):
                 parsed_criteria_ids = [uuid.UUID(str(c)) for c in loaded if c]
         except Exception:
-            # Parse chuỗi phân tách bằng phẩy
             parts = [p.strip() for p in criteria_ids.split(",") if p.strip()]
             for p in parts:
                 try:
@@ -171,7 +183,6 @@ def upload_and_create_evidence(
         parsed_criteria_ids.append(prim_id)
 
     for cid in set(parsed_criteria_ids):
-        # Xác nhận Criterion tồn tại
         if db.query(Criterion).filter(Criterion.id == cid).first():
             db.add(EvidenceCriteria(evidence_id=ev.id, criteria_id=cid))
 
@@ -199,6 +210,7 @@ def upload_and_create_evidence(
 
     db.commit()
     db.refresh(ev)
+    log_audit(db, current_user.id, "UPLOAD", "evidences", ev.id, new_values={"code": ev.code, "name": ev.name, "status": ev.status})
 
     return {
         "message": "Upload và tạo minh chứng thành công!",
@@ -215,24 +227,156 @@ def delete_evidence(
     if not ev:
         raise HTTPException(status_code=404, detail="Không tìm thấy minh chứng.")
 
+    # Chỉ cho phép xóa minh chứng ở trạng thái DRAFT hoặc REJECTED
+    if ev.status not in ("DRAFT", "REJECTED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Không thể xóa minh chứng ở trạng thái '{STATUS_LABELS.get(ev.status, ev.status)}'. "
+                   f"Chỉ có thể xóa minh chứng ở trạng thái 'Bản nháp' hoặc 'Bị từ chối'."
+        )
+
+    ev_id = ev.id
+    ev_code = ev.code
     db.delete(ev)
     db.commit()
+    log_audit(db, current_user.id, "DELETE", "evidences", ev_id, old_values={"code": ev_code})
     return {"message": "Đã xóa minh chứng thành công"}
 
+
+# ==========================================
+# WORKFLOW ENDPOINT - State Machine
+# ==========================================
 @router.patch("/{id}/workflow")
 def update_workflow(
     id: uuid.UUID,
     workflow: WorkflowUpdate,
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.RequirePermissions(["evidence.update", "evidence.review"]))
+    current_user: User = Depends(deps.RequirePermissions(["evidence.update"]))
 ):
     ev = db.query(Evidence).filter(Evidence.id == id).first()
     if not ev:
         raise HTTPException(status_code=404, detail="Không tìm thấy minh chứng.")
-        
-    ev.status = workflow.status.upper()
+
+    old_status = ev.status.upper()
+    new_status = workflow.status.upper()
+
+    # 1. Validate transition hợp lệ bằng State Machine
+    try:
+        validate_evidence_transition(old_status, new_status, workflow.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 2. Cập nhật trạng thái
+    ev.status = new_status
+
+    # 3. Lưu rejection reason nếu có
+    if new_status in REJECTION_REQUIRED_STATES:
+        ev.rejection_reason = workflow.note
+    elif new_status in ("APPROVED", "PASSED"):
+        ev.rejection_reason = None  # Xóa lý do từ chối cũ khi được duyệt
+
+    # 4. Cập nhật thông tin reviewer
+    if is_reviewer_transition(old_status, new_status):
+        ev.reviewed_by = current_user.id
+        ev.reviewed_at = datetime.utcnow()
+
+    # 5. Cập nhật submission_date nếu nộp
+    if new_status == "SUBMITTED":
+        ev.submission_date = datetime.utcnow()
+
+    # 6. Tạo review log (append-only history)
+    review_log = EvidenceReviewLog(
+        evidence_id=ev.id,
+        reviewer_id=current_user.id,
+        from_status=old_status,
+        to_status=new_status,
+        reason=workflow.note,
+    )
+    db.add(review_log)
+
+    # 7. Tạo thông báo tự động
+    try:
+        notify_evidence_status_change(
+            db=db,
+            evidence_id=ev.id,
+            evidence_code=ev.code,
+            evidence_name=ev.name,
+            author_id=ev.author_id,
+            reviewer_id=current_user.id,
+            old_status=old_status,
+            new_status=new_status,
+            reason=workflow.note,
+        )
+    except Exception:
+        pass  # Notification failure shouldn't block workflow
+
     db.commit()
-    return {"message": f"Cập nhật trạng thái thành công: {ev.status}"}
+    log_audit(db, current_user.id, f"WORKFLOW_{new_status}", "evidences", ev.id, old_values={"status": old_status}, new_values={"status": new_status, "rejection_reason": workflow.note})
+
+    return {
+        "message": f"Cập nhật trạng thái thành công: {STATUS_LABELS.get(old_status, old_status)} → {STATUS_LABELS.get(new_status, new_status)}",
+        "old_status": old_status,
+        "new_status": new_status,
+        "rejection_reason": ev.rejection_reason,
+    }
+
+
+# ==========================================
+# TRANSITIONS INFO ENDPOINT
+# ==========================================
+@router.get("/{id}/transitions")
+def get_evidence_transitions(
+    id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Trả về danh sách các trạng thái có thể chuyển từ trạng thái hiện tại."""
+    ev = db.query(Evidence).filter(Evidence.id == id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Không tìm thấy minh chứng.")
+
+    transitions = get_available_transitions(ev.status)
+    return {
+        "current_status": ev.status,
+        "current_label": STATUS_LABELS.get(ev.status, ev.status),
+        "available_transitions": transitions,
+    }
+
+
+# ==========================================
+# REVIEW HISTORY ENDPOINT
+# ==========================================
+@router.get("/{id}/review-history")
+def get_review_history(
+    id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Xem lịch sử duyệt minh chứng."""
+    ev = db.query(Evidence).filter(Evidence.id == id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Không tìm thấy minh chứng.")
+
+    logs = db.query(EvidenceReviewLog).filter(
+        EvidenceReviewLog.evidence_id == id
+    ).order_by(EvidenceReviewLog.created_at.desc()).all()
+
+    result = []
+    for log in logs:
+        reviewer = db.query(User).filter(User.id == log.reviewer_id).first() if log.reviewer_id else None
+        result.append({
+            "id": log.id,
+            "from_status": log.from_status,
+            "from_label": STATUS_LABELS.get(log.from_status, log.from_status),
+            "to_status": log.to_status,
+            "to_label": STATUS_LABELS.get(log.to_status, log.to_status),
+            "reason": log.reason,
+            "reviewer_name": reviewer.username if reviewer else "Hệ thống",
+            "created_at": log.created_at,
+        })
+
+    return {"items": result}
+
 
 @router.get("/documents/{version_id}/download")
 def download_file(

@@ -11,6 +11,7 @@ from app.models.user import User
 router = APIRouter()
 
 @router.get("", response_model=PaginatedNotificationResponse)
+@router.get("/", response_model=PaginatedNotificationResponse)
 def get_my_notifications(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user), # Ai cũng có thể xem thông báo của mình

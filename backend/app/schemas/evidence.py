@@ -51,6 +51,12 @@ class EvidenceResponse(BaseModel):
     provider: Optional[str] = None
     status: str
     author_id: Optional[Union[uuid.UUID, int, str]] = None
+    
+    # Phase 1: State Machine fields
+    rejection_reason: Optional[str] = None
+    reviewed_by: Optional[Union[uuid.UUID, int, str]] = None
+    reviewed_at: Optional[datetime] = None
+    
     created_at: Optional[datetime] = None
     criteria: List[EvidenceCriteriaInfo] = []
     documents: List[DocumentInfo] = []
@@ -61,5 +67,16 @@ class EvidenceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class WorkflowUpdate(BaseModel):
-    status: str # DRAFT, SUBMITTED, UNDER_REVIEW, NEEDS_REVISION, PASSED, APPROVED
-    note: Optional[str] = None
+    status: str  # DRAFT, SUBMITTED, NEEDS_REVISION, PASSED, APPROVED, REJECTED
+    note: Optional[str] = None  # Lý do từ chối / ghi chú
+
+class ReviewLogResponse(BaseModel):
+    id: uuid.UUID
+    from_status: str
+    from_label: str
+    to_status: str
+    to_label: str
+    reason: Optional[str] = None
+    reviewer_name: str
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)

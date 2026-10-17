@@ -8,10 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
-from app.models.quality import Standard, Criterion
+from app.models.quality import Standard, Criterion, StandardAssignment
+from app.models.evidence import EvidenceCriteria
+from app.models.evaluation import EvaluationDetail
+from app.models.training import Task
 from app.models.user import User
-from app.schemas.quality import StandardCreate, StandardUpdate, StandardResponse
+from app.schemas.quality import StandardCreate, StandardUpdate, StandardResponse, StandardAssignmentCreate, StandardAssignmentResponse
 from app.services.ai_standard_parser import analyze_document_content, execute_import_to_db
+from app.services.audit_service import log_audit
 
 router = APIRouter()
 
@@ -23,7 +27,7 @@ def get_standards(
 ):
     standards = db.query(Standard).options(
         joinedload(Standard.criteria).joinedload(Criterion.requirements)
-    ).order_by(Standard.code.asc()).all()
+    ).order_by(Standard.sequence_num.asc(), Standard.code.asc()).all()
 
     # Sắp xếp các criteria con theo sequence_num
     for std in standards:
@@ -57,6 +61,7 @@ def create_standard(
     db.commit()
     db.refresh(new_standard)
     new_standard.criteria = []
+    log_audit(db, current_user.id, "CREATE", "standards", new_standard.id, new_values={"code": new_standard.code, "name": new_standard.name})
     return new_standard
 
 @router.post("/ai-parse")
@@ -162,6 +167,7 @@ def update_standard(
     db.commit()
     db.refresh(std)
     std.criteria.sort(key=lambda c: (c.sequence_num, c.code))
+    log_audit(db, current_user.id, "UPDATE", "standards", std.id, new_values=update_data)
     return std
 
 @router.delete("/{standard_id}")
@@ -170,12 +176,152 @@ def delete_standard(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.RequirePermissions(["standards.delete"]))
 ):
-    std = db.query(Standard).filter(Standard.id == standard_id).first()
+    std = db.query(Standard).options(
+        joinedload(Standard.criteria)
+    ).filter(Standard.id == standard_id).first()
     if not std:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="Không tìm thấy tiêu chuẩn."
         )
+
+    # === DELETION GUARD: Kiểm tra ràng buộc trước khi xóa ===
+    criteria_ids = [c.id for c in std.criteria]
+    
+    if criteria_ids:
+        # Kiểm tra có minh chứng nào đang liên kết với tiêu chí thuộc tiêu chuẩn này
+        evidence_count = db.query(EvidenceCriteria).filter(
+            EvidenceCriteria.criteria_id.in_(criteria_ids)
+        ).count()
+        if evidence_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Không thể xóa tiêu chuẩn '{std.code}' vì có {evidence_count} minh chứng "
+                       f"đang liên kết với các tiêu chí thuộc tiêu chuẩn này. "
+                       f"Hãy xóa hoặc gỡ liên kết minh chứng trước."
+            )
+
+        # Kiểm tra có đánh giá nào đang liên kết
+        eval_count = db.query(EvaluationDetail).filter(
+            EvaluationDetail.criteria_id.in_(criteria_ids)
+        ).count()
+        if eval_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Không thể xóa tiêu chuẩn '{std.code}' vì có {eval_count} bản đánh giá "
+                       f"đang liên kết. Hãy xóa kết quả đánh giá trước."
+            )
+
+        # Kiểm tra có nhiệm vụ nào đang liên kết
+        task_count = db.query(Task).filter(
+            Task.criteria_id.in_(criteria_ids)
+        ).count()
+        if task_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Không thể xóa tiêu chuẩn '{std.code}' vì có {task_count} nhiệm vụ "
+                       f"đang liên kết. Hãy xóa hoặc gỡ liên kết nhiệm vụ trước."
+            )
+
+    std_id = std.id
+    std_code = std.code
     db.delete(std)
     db.commit()
-    return {"message": "Đã xóa tiêu chuẩn thành công"}
+    log_audit(db, current_user.id, "DELETE", "standards", std_id, old_values={"code": std_code})
+    return {"message": f"Đã xóa tiêu chuẩn '{std_code}' thành công"}
+
+
+# ==========================================
+# STANDARD ASSIGNMENTS (TASK 2.5)
+# ==========================================
+@router.get("/{standard_id}/assignments")
+def get_standard_assignments(
+    standard_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    std = db.query(Standard).filter(Standard.id == standard_id).first()
+    if not std:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tiêu chuẩn.")
+
+    assignments = db.query(StandardAssignment).options(
+        joinedload(StandardAssignment.user)
+    ).filter(StandardAssignment.standard_id == standard_id).all()
+
+    return [
+        {
+            "id": a.id,
+            "standard_id": a.standard_id,
+            "user_id": a.user_id,
+            "user_name": a.user.username if a.user else None,
+            "user_email": a.user.email if a.user else None,
+            "user_full_name": a.user.full_name if a.user else None,
+            "role_in_standard": a.role_in_standard,
+            "assigned_at": a.assigned_at,
+        }
+        for a in assignments
+    ]
+
+
+@router.post("/{standard_id}/assign")
+def assign_user_to_standard(
+    standard_id: uuid.UUID,
+    assignment_in: StandardAssignmentCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.RequirePermissions(["standards.update"])),
+):
+    std = db.query(Standard).filter(Standard.id == standard_id).first()
+    if not std:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tiêu chuẩn.")
+
+    user = db.query(User).filter(User.id == assignment_in.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
+
+    # Check if already assigned
+    existing = db.query(StandardAssignment).filter(
+        StandardAssignment.standard_id == standard_id,
+        StandardAssignment.user_id == assignment_in.user_id
+    ).first()
+
+    if existing:
+        existing.role_in_standard = assignment_in.role_in_standard or "LEAD"
+        db.commit()
+        db.refresh(existing)
+        return {
+            "message": f"Đã cập nhật vai trò phân công cho {user.username}",
+            "assignment_id": existing.id
+        }
+
+    assignment = StandardAssignment(
+        standard_id=standard_id,
+        user_id=assignment_in.user_id,
+        role_in_standard=assignment_in.role_in_standard or "LEAD",
+    )
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+
+    return {
+        "message": f"Đã phân công {user.username} phụ trách tiêu chuẩn {std.code}",
+        "assignment_id": assignment.id
+    }
+
+
+@router.delete("/{standard_id}/assign/{user_id}")
+def remove_standard_assignment(
+    standard_id: uuid.UUID,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.RequirePermissions(["standards.update"])),
+):
+    assignment = db.query(StandardAssignment).filter(
+        StandardAssignment.standard_id == standard_id,
+        StandardAssignment.user_id == user_id
+    ).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phân công nhân sự này.")
+
+    db.delete(assignment)
+    db.commit()
+    return {"message": "Đã gỡ phân công thành công"}

@@ -5,11 +5,15 @@ import uuid
 
 from app.api import deps
 from app.models.quality import Standard, Criterion, Requirement
+from app.models.evidence import EvidenceCriteria
+from app.models.evaluation import EvaluationDetail
+from app.models.training import Task
 from app.schemas.quality import (
     CriterionCreate, CriterionUpdate, CriterionResponse,
     RequirementCreate, RequirementResponse, PaginatedResponse
 )
 from app.models.user import User
+from app.services.audit_service import log_audit
 
 router = APIRouter()
 
@@ -70,6 +74,7 @@ def create_criterion(
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
+    log_audit(db, current_user.id, "CREATE", "criteria", db_obj.id, new_values={"code": db_obj.code, "name": db_obj.name})
     return db_obj
 
 @router.put("/{id}", response_model=CriterionResponse)
@@ -106,6 +111,7 @@ def update_criterion(
 
     db.commit()
     db.refresh(criterion)
+    log_audit(db, current_user.id, "UPDATE", "criteria", criterion.id, new_values=update_data)
     return criterion
 
 @router.delete("/{id}")
@@ -118,9 +124,46 @@ def delete_criterion(
     if not criterion:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tiêu chí.")
 
+    # === DELETION GUARD: Kiểm tra ràng buộc trước khi xóa ===
+    # Kiểm tra minh chứng liên kết
+    evidence_count = db.query(EvidenceCriteria).filter(
+        EvidenceCriteria.criteria_id == id
+    ).count()
+    if evidence_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Không thể xóa tiêu chí '{criterion.code}' vì có {evidence_count} minh chứng "
+                   f"đang liên kết. Hãy xóa hoặc gỡ liên kết minh chứng trước."
+        )
+
+    # Kiểm tra đánh giá liên kết
+    eval_count = db.query(EvaluationDetail).filter(
+        EvaluationDetail.criteria_id == id
+    ).count()
+    if eval_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Không thể xóa tiêu chí '{criterion.code}' vì có {eval_count} bản đánh giá "
+                   f"đang liên kết. Hãy xóa kết quả đánh giá trước."
+        )
+
+    # Kiểm tra nhiệm vụ liên kết
+    task_count = db.query(Task).filter(
+        Task.criteria_id == id
+    ).count()
+    if task_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Không thể xóa tiêu chí '{criterion.code}' vì có {task_count} nhiệm vụ "
+                   f"đang liên kết. Hãy xóa hoặc gỡ liên kết nhiệm vụ trước."
+        )
+
+    crit_id = criterion.id
+    crit_code = criterion.code
     db.delete(criterion)
     db.commit()
-    return {"message": "Đã xóa tiêu chí thành công"}
+    log_audit(db, current_user.id, "DELETE", "criteria", crit_id, old_values={"code": crit_code})
+    return {"message": f"Đã xóa tiêu chí '{crit_code}' thành công"}
 
 @router.get("/{id}/requirements", response_model=list[RequirementResponse])
 def get_criterion_requirements(

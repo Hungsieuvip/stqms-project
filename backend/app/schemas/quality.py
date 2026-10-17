@@ -67,6 +67,7 @@ class StandardBase(BaseModel):
     name: str
     description: Optional[str] = None
     issued_date: Optional[date] = None
+    sequence_num: Optional[int] = 0
     is_active: Optional[bool] = True
 
 class StandardCreate(StandardBase):
@@ -77,6 +78,7 @@ class StandardUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     issued_date: Optional[date] = None
+    sequence_num: Optional[int] = 0
     is_active: Optional[bool] = None
 
 class StandardResponse(StandardBase):
@@ -85,4 +87,20 @@ class StandardResponse(StandardBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     criteria: List[CriterionResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+# Standard Assignment
+class StandardAssignmentCreate(BaseModel):
+    user_id: int
+    role_in_standard: Optional[str] = "LEAD"  # LEAD, MEMBER
+
+class StandardAssignmentResponse(BaseModel):
+    id: uuid.UUID
+    standard_id: uuid.UUID
+    user_id: int
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_full_name: Optional[str] = None
+    role_in_standard: str
+    assigned_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)

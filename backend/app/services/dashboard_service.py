@@ -1,11 +1,11 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from datetime import date
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import uuid
 
-from app.models.quality import Criterion
-from app.models.evidence import Evidence
+from app.models.quality import Standard, Criterion
+from app.models.evidence import Evidence, EvidenceCriteria
 from app.models.training import Task, Plan
 from app.models.evaluation import EvaluationDetail
 from app.models.system import AuditLog
@@ -39,8 +39,10 @@ class DashboardService:
         task_filters = self._build_task_filters(department_id, start_date, end_date)
         evidence_filters = self._build_evidence_filters(department_id, start_date, end_date)
 
+        total_standards = self.db.query(Standard).count()
         total_criteria = self.db.query(Criterion).count()
         total_evidence = self.db.query(Evidence).filter(*evidence_filters).count()
+        approved_evidence = self.db.query(Evidence).filter(*evidence_filters, Evidence.status == 'APPROVED').count()
         
         # Task Metrics
         total_tasks = self.db.query(Task).filter(*task_filters).count()
@@ -50,13 +52,16 @@ class DashboardService:
 
         task_completion_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
         
-        # Overall completion (Giả định: Dựa trên số tiêu chí đã PASS / Tổng số tiêu chí)
+        # Overall completion (Số tiêu chí đã PASS / Tổng số tiêu chí)
         passed_criteria = self.db.query(EvaluationDetail).filter(EvaluationDetail.status == 'PASS').count()
         overall_completion_percentage = (passed_criteria / total_criteria * 100) if total_criteria > 0 else 0.0
 
         return {
+            "total_standards": total_standards,
             "total_criteria": total_criteria,
             "total_evidence": total_evidence,
+            "approved_evidence": approved_evidence,
+            "passed_criteria": passed_criteria,
             "total_tasks": total_tasks,
             "completed_tasks": completed_tasks,
             "pending_tasks": pending_tasks,
@@ -65,13 +70,46 @@ class DashboardService:
             "task_completion_percentage": round(task_completion_percentage, 2)
         }
 
+    def get_standards_progress(self) -> List[Dict[str, Any]]:
+        """Lấy tiến độ thực tế theo từng Tiêu chuẩn trong hệ thống"""
+        standards = self.db.query(Standard).order_by(Standard.sequence_num.asc(), Standard.code.asc()).all()
+        results = []
+        for std in standards:
+            criteria = self.db.query(Criterion).filter(Criterion.standard_id == std.id).all()
+            crit_ids = [c.id for c in criteria]
+            total_crit = len(criteria)
+            
+            passed_crit = 0
+            ev_count = 0
+            if crit_ids:
+                passed_crit = self.db.query(EvaluationDetail).filter(
+                    EvaluationDetail.criteria_id.in_(crit_ids),
+                    EvaluationDetail.status == 'PASS'
+                ).count()
+                
+                ev_count = self.db.query(EvidenceCriteria).filter(
+                    EvidenceCriteria.criteria_id.in_(crit_ids)
+                ).count()
+
+            rate = round((passed_crit / total_crit * 100), 2) if total_crit > 0 else 0.0
+
+            results.append({
+                "id": std.id,
+                "code": std.code,
+                "name": std.name,
+                "total_criteria": total_crit,
+                "passed_criteria": passed_crit,
+                "completion_rate": rate,
+                "evidence_count": ev_count
+            })
+        return results
+
     def get_evidence_by_status_chart(self, department_id: Optional[uuid.UUID], start_date: Optional[date], end_date: Optional[date]):
         filters = self._build_evidence_filters(department_id, start_date, end_date)
         results = self.db.query(Evidence.status, func.count(Evidence.id)).filter(*filters).group_by(Evidence.status).all()
         return [{"label": r[0] or "UNKNOWN", "value": r[1]} for r in results]
 
     def get_criteria_by_eval_status_chart(self, academic_year_id: Optional[uuid.UUID] = None):
-        # Có thể thêm join với Evaluation để lọc theo academic_year
         query = self.db.query(EvaluationDetail.status, func.count(EvaluationDetail.id)).group_by(EvaluationDetail.status)
         results = query.all()
         return [{"label": r[0] or "UNASSESSED", "value": r[1]} for r in results]
@@ -85,7 +123,7 @@ class DashboardService:
                 "id": log.AuditLog.id,
                 "action": log.AuditLog.action,
                 "table_name": log.AuditLog.table_name,
-                "user_name": log.User.full_name if log.User else "System",
+                "user_name": (log.User.full_name or log.User.username) if log.User else "Hệ thống",
                 "timestamp": log.AuditLog.created_at
             }
             for log in logs

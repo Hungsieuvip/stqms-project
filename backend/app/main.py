@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.api.routes import (
     health, auth, users, standards, criteria,
     evidences, plans, tasks, evaluations, 
-    dashboard, notifications, audit_logs
+    dashboard, notifications, audit_logs, academic_years
 )
 
 # 2. Khởi tạo ứng dụng FastAPI
@@ -35,6 +35,7 @@ app.include_router(evidences.router, prefix=f"{settings.API_V1_STR}/evidences", 
 app.include_router(plans.router, prefix=f"{settings.API_V1_STR}/plans", tags=["plans"])
 app.include_router(tasks.router, prefix=f"{settings.API_V1_STR}/tasks", tags=["tasks"])
 app.include_router(evaluations.router, prefix=f"{settings.API_V1_STR}/evaluations", tags=["evaluations"])
+app.include_router(academic_years.router, prefix=f"{settings.API_V1_STR}/academic-years", tags=["academic_years"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["dashboard"])
 app.include_router(notifications.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["notifications"])
 app.include_router(audit_logs.router, prefix=f"{settings.API_V1_STR}/audit-logs", tags=["audit_logs"])

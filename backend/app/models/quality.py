@@ -14,11 +14,13 @@ class Standard(Base):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     issued_date: Mapped[Date] = mapped_column(Date, nullable=True)
+    sequence_num: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     criteria: Mapped[list["Criterion"]] = relationship("Criterion", back_populates="standard", cascade="all, delete")
+    assignments: Mapped[list["StandardAssignment"]] = relationship("StandardAssignment", back_populates="standard", cascade="all, delete")
 
 class Criterion(Base):
     __tablename__ = "criteria"
@@ -49,3 +51,15 @@ class Requirement(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     criterion: Mapped["Criterion"] = relationship("Criterion", back_populates="requirements")
+
+class StandardAssignment(Base):
+    __tablename__ = "standard_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    standard_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("standards.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role_in_standard: Mapped[str] = mapped_column(String(50), default="LEAD")  # LEAD, MEMBER
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    standard: Mapped["Standard"] = relationship("Standard", back_populates="assignments")
+    user: Mapped["User"] = relationship("User")

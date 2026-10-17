@@ -24,11 +24,18 @@ class Evidence(Base):
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="DRAFT")
     submission_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # === Phase 1: Bổ sung cho State Machine ===
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     criteria: Mapped[list["EvidenceCriteria"]] = relationship("EvidenceCriteria", back_populates="evidence", cascade="all, delete-orphan")
     documents: Mapped[list["Document"]] = relationship("Document", back_populates="evidence", cascade="all, delete-orphan")
+    review_logs: Mapped[list["EvidenceReviewLog"]] = relationship("EvidenceReviewLog", back_populates="evidence", cascade="all, delete-orphan")
 
 class EvidenceCriteria(Base):
     __tablename__ = "evidence_criteria"
@@ -72,3 +79,25 @@ class DocumentVersion(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
     
     document: Mapped["Document"] = relationship("Document", back_populates="versions")
+
+
+# ==========================================
+# EVIDENCE REVIEW LOG - Lịch sử duyệt minh chứng
+# ==========================================
+class EvidenceReviewLog(Base):
+    """
+    Bảng lưu lịch sử tất cả các lần chuyển trạng thái của minh chứng.
+    Append-only: không sửa, không xóa.
+    """
+    __tablename__ = "evidence_review_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("evidences.id", ondelete="CASCADE"))
+    reviewer_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    from_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    to_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=True)
+
+    evidence: Mapped["Evidence"] = relationship("Evidence", back_populates="review_logs")

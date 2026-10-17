@@ -7,7 +7,8 @@ import EvidenceModal from '../../components/evidences/EvidenceModal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { 
   FileText, Plus, Search, Filter, Trash2, Eye, 
-  CheckCircle, XCircle, Download, Layers, RefreshCw 
+  CheckCircle, XCircle, Download, Layers, RefreshCw,
+  Clock, AlertCircle, ArrowRight, Send, History
 } from 'lucide-react';
 
 interface EvidenceItem {
@@ -21,8 +22,9 @@ interface EvidenceItem {
   status: string;
   created_at: string;
   uploader_name?: string;
-  review_comment?: string;
-  comments?: any[];
+  rejection_reason?: string;
+  reviewed_by?: number;
+  reviewed_at?: string;
   criteria?: Array<{
     criteria_id: string;
     criterion?: {
@@ -32,10 +34,20 @@ interface EvidenceItem {
   }>;
 }
 
+// Vietnamese status labels matching backend state_machine.py
+const STATUS_LABELS: Record<string, string> = {
+  'DRAFT': 'Bản nháp',
+  'SUBMITTED': 'Đã nộp',
+  'NEEDS_REVISION': 'Cần chỉnh sửa',
+  'PASSED': 'Đã duyệt sơ bộ',
+  'REJECTED': 'Bị từ chối',
+  'APPROVED': 'Đã phê duyệt',
+};
+
 export default function EvidencesPage() {
   const { user } = useAuth();
-  const canManageWorkflow = user?.role === 'admin' || user?.role === 'manager';
-  const canUpload = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'staff';
+  const canManageWorkflow = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'quản trị hệ thống';
+  const canUpload = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'staff' || user?.role === 'quản trị hệ thống';
 
   const [evidences, setEvidences] = useState<EvidenceItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +58,7 @@ export default function EvidencesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  // Modal từ chối minh chứng kèm lý do
+  // Modal từ chối / yêu cầu chỉnh sửa
   const [rejectModal, setRejectModal] = useState<{
     isOpen: boolean;
     id: string;
@@ -54,13 +66,30 @@ export default function EvidencesPage() {
     name?: string;
     reason: string;
     isSubmitting: boolean;
+    action: 'REJECTED' | 'NEEDS_REVISION';
   }>({
     isOpen: false,
     id: '',
     code: '',
     name: '',
     reason: '',
-    isSubmitting: false
+    isSubmitting: false,
+    action: 'REJECTED',
+  });
+
+  // Review history modal
+  const [historyModal, setHistoryModal] = useState<{
+    isOpen: boolean;
+    id: string;
+    code: string;
+    items: any[];
+    loading: boolean;
+  }>({
+    isOpen: false,
+    id: '',
+    code: '',
+    items: [],
+    loading: false,
   });
 
   const fetchEvidences = async () => {
@@ -83,7 +112,6 @@ export default function EvidencesPage() {
   const handleDelete = async () => {
     const idToDelete = deleteData.id;
     setDeleteData({ isOpen: false, id: '' });
-    // Cập nhật giao diện ngay lập tức
     setEvidences(prev => prev.filter(e => e.id !== idToDelete));
     try {
       await evidenceService.deleteEvidence(idToDelete);
@@ -110,55 +138,191 @@ export default function EvidencesPage() {
     }
   };
 
-  const handleOpenReject = (item: EvidenceItem) => {
+  const handlePass = async (item: EvidenceItem) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn duyệt sơ bộ minh chứng "${item.code}"?`)) return;
+    try {
+      setEvidences(prev => prev.map(e => e.id === item.id ? { ...e, status: 'PASSED' } : e));
+      await evidenceService.passEvidence(item.id);
+      alert('Đã duyệt sơ bộ minh chứng thành công!');
+      fetchEvidences();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Duyệt sơ bộ thất bại!');
+      fetchEvidences();
+    }
+  };
+
+  const handleOpenReject = (item: EvidenceItem, action: 'REJECTED' | 'NEEDS_REVISION' = 'REJECTED') => {
     setRejectModal({
       isOpen: true,
       id: item.id,
       code: item.code,
       name: item.name || item.file_name || 'Minh chứng',
       reason: '',
-      isSubmitting: false
+      isSubmitting: false,
+      action: action,
     });
   };
 
   const handleConfirmReject = async () => {
     if (!rejectModal.reason || !rejectModal.reason.trim()) {
-      alert('Vui lòng nhập lý do từ chối để gửi thông báo cho người tải lên!');
+      alert('Vui lòng nhập lý do để gửi thông báo cho người tải lên!');
       return;
     }
     setRejectModal(prev => ({ ...prev, isSubmitting: true }));
     try {
       const reason = rejectModal.reason.trim();
-      setEvidences(prev => prev.map(e => e.id === rejectModal.id ? { ...e, status: 'REJECTED', review_comment: reason } : e));
-      await evidenceService.rejectEvidence(rejectModal.id, reason);
-      alert('Đã từ chối minh chứng và gửi thông báo lý do thành công!');
-      setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false });
+      const newStatus = rejectModal.action;
+      setEvidences(prev => prev.map(e => e.id === rejectModal.id ? { ...e, status: newStatus, rejection_reason: reason } : e));
+      
+      if (newStatus === 'NEEDS_REVISION') {
+        await evidenceService.requestRevision(rejectModal.id, reason);
+        alert('Đã yêu cầu chỉnh sửa và gửi thông báo thành công!');
+      } else {
+        await evidenceService.rejectEvidence(rejectModal.id, reason);
+        alert('Đã từ chối minh chứng và gửi thông báo thành công!');
+      }
+      
+      setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false, action: 'REJECTED' });
       fetchEvidences();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Từ chối minh chứng thất bại!');
+      alert(err.response?.data?.detail || 'Thao tác thất bại!');
       setRejectModal(prev => ({ ...prev, isSubmitting: false }));
       fetchEvidences();
     }
   };
 
-  const getStatusBadge = (status: string, comment?: string) => {
+  const handleViewHistory = async (item: EvidenceItem) => {
+    setHistoryModal({ isOpen: true, id: item.id, code: item.code, items: [], loading: true });
+    try {
+      const res = await evidenceService.getReviewHistory(item.id);
+      setHistoryModal(prev => ({ ...prev, items: res.items || [], loading: false }));
+    } catch (err) {
+      setHistoryModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const getStatusBadge = (status: string, rejectionReason?: string) => {
     switch (status) {
       case 'APPROVED': 
-        return <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><CheckCircle size={12} /> Đã duyệt</span>;
+        return <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><CheckCircle size={12} /> Đã phê duyệt</span>;
       case 'REJECTED': 
         return (
           <div className="flex flex-col gap-0.5">
-            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><XCircle size={12} /> Từ chối</span>
-            {comment && <span className="text-[11px] text-rose-600 italic line-clamp-1 max-w-[160px]" title={comment}>Lý do: {comment}</span>}
+            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><XCircle size={12} /> Bị từ chối</span>
+            {rejectionReason && <span className="text-[11px] text-rose-600 italic line-clamp-1 max-w-[160px]" title={rejectionReason}>Lý do: {rejectionReason}</span>}
+          </div>
+        );
+      case 'NEEDS_REVISION':
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="px-2.5 py-0.5 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><AlertCircle size={12} /> Cần chỉnh sửa</span>
+            {rejectionReason && <span className="text-[11px] text-orange-600 italic line-clamp-1 max-w-[160px]" title={rejectionReason}>Lý do: {rejectionReason}</span>}
           </div>
         );
       case 'PASSED':
-        return <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold">Đạt sơ bộ</span>;
+        return <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><CheckCircle size={12} /> Đã duyệt sơ bộ</span>;
       case 'SUBMITTED':
-        return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">Đã nộp</span>;
+        return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold inline-flex items-center gap-1"><Send size={12} /> Đã nộp</span>;
+      case 'DRAFT':
+        return <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs font-semibold inline-flex items-center gap-1"><Clock size={12} /> Bản nháp</span>;
       default: 
-        return <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold">Chờ duyệt</span>;
+        return <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold">{STATUS_LABELS[status] || status}</span>;
     }
+  };
+
+  // Xác định các action button có thể làm theo trạng thái hiện tại
+  const getActionButtons = (item: EvidenceItem) => {
+    const buttons: React.ReactNode[] = [];
+    const status = item.status;
+
+    // Download button (luôn hiện nếu có file)
+    if (item.file_url) {
+      buttons.push(
+        <a key="download" href={item.file_url} target="_blank" rel="noreferrer"
+          title="Tải về tệp minh chứng" 
+          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+          <Download size={16} />
+        </a>
+      );
+    }
+
+    // Review history button
+    buttons.push(
+      <button key="history" onClick={() => handleViewHistory(item)}
+        title="Xem lịch sử duyệt"
+        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer">
+        <History size={16} />
+      </button>
+    );
+
+    if (canManageWorkflow) {
+      // SUBMITTED -> PASSED (duyệt sơ bộ)
+      if (status === 'SUBMITTED') {
+        buttons.push(
+          <button key="pass" onClick={() => handlePass(item)}
+            title="Duyệt sơ bộ"
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer">
+            <CheckCircle size={16} />
+          </button>
+        );
+        buttons.push(
+          <button key="revision" onClick={() => handleOpenReject(item, 'NEEDS_REVISION')}
+            title="Yêu cầu chỉnh sửa"
+            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition cursor-pointer">
+            <AlertCircle size={16} />
+          </button>
+        );
+        buttons.push(
+          <button key="reject" onClick={() => handleOpenReject(item, 'REJECTED')}
+            title="Từ chối minh chứng"
+            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer">
+            <XCircle size={16} />
+          </button>
+        );
+      }
+
+      // PASSED -> APPROVED (phê duyệt cuối)
+      if (status === 'PASSED') {
+        buttons.push(
+          <button key="approve" onClick={() => handleApprove(item)}
+            title="Phê duyệt cuối cùng"
+            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer">
+            <CheckCircle size={16} />
+          </button>
+        );
+        buttons.push(
+          <button key="reject-final" onClick={() => handleOpenReject(item, 'REJECTED')}
+            title="Từ chối minh chứng"
+            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer">
+            <XCircle size={16} />
+          </button>
+        );
+      }
+
+      // DRAFT / REJECTED -> có thể nộp (admin auto-approve)
+      if (status === 'DRAFT' || status === 'REJECTED') {
+        buttons.push(
+          <button key="auto-approve" onClick={() => handleApprove(item)}
+            title="Phê duyệt nhanh (tự động chuyển qua các bước)"
+            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer">
+            <CheckCircle size={16} />
+          </button>
+        );
+      }
+
+      // Chỉ cho xóa khi DRAFT hoặc REJECTED
+      if (status === 'DRAFT' || status === 'REJECTED') {
+        buttons.push(
+          <button key="delete" onClick={() => setDeleteData({ isOpen: true, id: item.id })}
+            title="Xóa minh chứng"
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer">
+            <Trash2 size={16} />
+          </button>
+        );
+      }
+    }
+
+    return buttons;
   };
 
   return (
@@ -198,82 +362,63 @@ export default function EvidencesPage() {
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm appearance-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           >
             <option value="">Tất cả trạng thái</option>
             <option value="DRAFT">Bản nháp</option>
-            <option value="PENDING">Chờ duyệt</option>
-            <option value="APPROVED">Đã duyệt</option>
-            <option value="REJECTED">Từ chối</option>
+            <option value="SUBMITTED">Đã nộp</option>
+            <option value="NEEDS_REVISION">Cần chỉnh sửa</option>
+            <option value="PASSED">Đã duyệt sơ bộ</option>
+            <option value="APPROVED">Đã phê duyệt</option>
+            <option value="REJECTED">Bị từ chối</option>
           </select>
         </div>
         <button 
           onClick={fetchEvidences}
-          title="Làm mới danh sách"
-          className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition self-end sm:self-center"
+          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition text-sm text-slate-600 flex items-center gap-1.5"
         >
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={16} /> Tải lại
         </button>
       </div>
 
-      {/* Table Data */}
+      {/* Table */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left divide-y divide-slate-200">
-            <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-3.5">Mã / Tên minh chứng</th>
-                <th className="px-6 py-3.5">Tiêu chí liên kết</th>
-                <th className="px-6 py-3.5">Người tải lên</th>
-                <th className="px-6 py-3.5">Trạng thái</th>
-                <th className="px-6 py-3.5 text-right">Thao tác</th>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Minh chứng</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tiêu chí</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Người nộp</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Hành động</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
-                    <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
-                    Đang tải danh sách minh chứng...
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">Đang tải dữ liệu...</td></tr>
               ) : evidences.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
-                    <FileText size={40} className="mx-auto mb-2 opacity-30" />
-                    <p className="font-medium text-slate-600">Chưa có hồ sơ minh chứng nào.</p>
-                    {canUpload && (
-                      <button 
-                        onClick={() => setIsUploadOpen(true)}
-                        className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-semibold underline"
-                      >
-                        + Bấm vào đây để tải lên minh chứng đầu tiên
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">Chưa có minh chứng nào.</td></tr>
               ) : (
-                evidences.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                evidences.map(item => (
+                  <tr key={item.id} className="hover:bg-slate-50/50 transition">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                          {item.code}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-sm text-slate-900">{item.name}</p>
-                      {item.file_name && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-                          <FileText size={13} className="text-blue-500" />
-                          <span className="truncate max-w-xs">{item.file_name}</span>
-                          {item.file_size && (
-                            <span>({(item.file_size / 1024 / 1024).toFixed(2)} MB)</span>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <FileText size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm">{item.name}</p>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code}</p>
+                          {item.file_name && (
+                            <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[200px]" title={item.file_name}>
+                              📎 {item.file_name}
+                            </p>
                           )}
                         </div>
-                      )}
+                      </div>
                     </td>
 
-                    {/* Cột Tiêu chí liên kết */}
                     <td className="px-6 py-4">
                       {item.criteria && item.criteria.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 max-w-xs">
@@ -299,56 +444,12 @@ export default function EvidencesPage() {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(item.status, item.review_comment)}
+                      {getStatusBadge(item.status, item.rejection_reason)}
                     </td>
 
                     <td className="px-6 py-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {item.file_url && (
-                          <a 
-                            href={item.file_url} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            title="Tải về tệp minh chứng" 
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                          >
-                            <Download size={16} />
-                          </a>
-                        )}
-
-                        {/* Duyệt minh chứng */}
-                        {canManageWorkflow && (
-                          <>
-                            {item.status !== 'APPROVED' && (
-                              <button 
-                                onClick={() => handleApprove(item)} 
-                                title="Phê duyệt minh chứng" 
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
-                              >
-                                <CheckCircle size={16} />
-                              </button>
-                            )}
-                            {item.status !== 'REJECTED' && (
-                              <button 
-                                onClick={() => handleOpenReject(item)} 
-                                title="Từ chối minh chứng (kèm lý do)" 
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                              >
-                                <XCircle size={16} />
-                              </button>
-                            )}
-                          </>
-                        )}
-
-                        {canManageWorkflow && (
-                          <button 
-                            onClick={() => setDeleteData({ isOpen: true, id: item.id })} 
-                            title="Xóa minh chứng"
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                        {getActionButtons(item)}
                       </div>
                     </td>
                   </tr>
@@ -375,16 +476,18 @@ export default function EvidencesPage() {
         onCancel={() => setDeleteData({ isOpen: false, id: '' })}
       />
 
-      {/* Modal Nhập lý do từ chối minh chứng & gửi thông báo */}
+      {/* Modal Từ chối / Yêu cầu chỉnh sửa */}
       {rejectModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
-            <div className="flex items-center gap-3 mb-4 text-rose-600">
-              <div className="p-2.5 bg-rose-50 rounded-xl">
-                <XCircle size={26} />
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`p-2.5 rounded-xl ${rejectModal.action === 'REJECTED' ? 'bg-rose-50 text-rose-600' : 'bg-orange-50 text-orange-600'}`}>
+                {rejectModal.action === 'REJECTED' ? <XCircle size={26} /> : <AlertCircle size={26} />}
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">Từ chối Minh chứng & Gửi phản hồi</h3>
+                <h3 className="text-base font-bold text-slate-900">
+                  {rejectModal.action === 'REJECTED' ? 'Từ chối Minh chứng' : 'Yêu cầu Chỉnh sửa'}
+                </h3>
                 <p className="text-xs text-slate-500">Mã: <span className="font-mono font-bold text-slate-700">{rejectModal.code}</span> — {rejectModal.name}</p>
               </div>
             </div>
@@ -392,18 +495,20 @@ export default function EvidencesPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Lý do từ chối minh chứng <span className="text-rose-500">*</span>
+                  Lý do {rejectModal.action === 'REJECTED' ? 'từ chối' : 'yêu cầu chỉnh sửa'} <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows={4}
                   value={rejectModal.reason}
                   onChange={(e) => setRejectModal(prev => ({ ...prev, reason: e.target.value }))}
-                  placeholder="Nhập chi tiết lý do từ chối để thông báo cho người gửi (Ví dụ: Thiếu chữ ký xác nhận của BGH, ảnh chụp mờ, không đúng năm học...)"
+                  placeholder={rejectModal.action === 'REJECTED' 
+                    ? 'Nhập chi tiết lý do từ chối (Ví dụ: Thiếu chữ ký xác nhận, ảnh mờ, không đúng năm học...)'
+                    : 'Nhập chi tiết những gì cần chỉnh sửa (Ví dụ: Bổ sung thêm biên bản họp, cập nhật ngày tháng...)'}
                   className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
                   autoFocus
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  * Lý do này sẽ được ghi nhận vào lịch sử trao đổi và gửi thông báo phản hồi cho người tải lên.
+                  * Lý do này sẽ được lưu vào lịch sử duyệt và gửi thông báo tự động cho người tải lên.
                 </p>
               </div>
 
@@ -411,7 +516,7 @@ export default function EvidencesPage() {
                 <button
                   type="button"
                   disabled={rejectModal.isSubmitting}
-                  onClick={() => setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false })}
+                  onClick={() => setRejectModal({ isOpen: false, id: '', code: '', name: '', reason: '', isSubmitting: false, action: 'REJECTED' })}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
                 >
                   Hủy
@@ -420,12 +525,70 @@ export default function EvidencesPage() {
                   type="button"
                   disabled={rejectModal.isSubmitting}
                   onClick={handleConfirmReject}
-                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  className={`px-4 py-2 text-xs font-bold text-white rounded-xl transition shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer ${
+                    rejectModal.action === 'REJECTED' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-orange-600 hover:bg-orange-700'
+                  }`}
                 >
-                  {rejectModal.isSubmitting ? 'Đang gửi thông báo...' : 'Xác nhận Từ chối & Gửi thông báo'}
+                  {rejectModal.isSubmitting 
+                    ? 'Đang xử lý...' 
+                    : rejectModal.action === 'REJECTED' 
+                      ? 'Xác nhận Từ chối' 
+                      : 'Yêu cầu Chỉnh sửa'}
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Lịch sử duyệt */}
+      {historyModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 relative border border-slate-100 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600">
+                  <History size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Lịch sử duyệt minh chứng</h3>
+                  <p className="text-xs text-slate-500">Mã: <span className="font-mono font-bold">{historyModal.code}</span></p>
+                </div>
+              </div>
+              <button onClick={() => setHistoryModal(prev => ({ ...prev, isOpen: false }))} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {historyModal.loading ? (
+              <p className="text-sm text-slate-400 text-center py-8">Đang tải lịch sử...</p>
+            ) : historyModal.items.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">Chưa có lịch sử duyệt nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {historyModal.items.map((log: any, idx: number) => (
+                  <div key={log.id || idx} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <ArrowRight size={16} className="text-slate-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium text-slate-500">{log.from_label}</span>
+                        <ArrowRight size={12} className="text-slate-300" />
+                        <span className="text-xs font-bold text-slate-800">{log.to_label}</span>
+                        <span className="text-[11px] text-slate-400">bởi {log.reviewer_name}</span>
+                      </div>
+                      {log.reason && (
+                        <p className="text-xs text-slate-600 mt-1 italic">💬 {log.reason}</p>
+                      )}
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {log.created_at ? new Date(log.created_at).toLocaleString('vi-VN') : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

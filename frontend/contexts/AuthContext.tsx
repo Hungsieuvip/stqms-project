@@ -11,6 +11,8 @@ interface UserRole {
 }
 
 interface User {
+  phone?: string;
+  permissions?: string[];
   id: string;
   email: string;
   username?: string;

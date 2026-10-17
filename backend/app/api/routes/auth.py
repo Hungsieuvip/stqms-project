@@ -13,6 +13,9 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 class UserResponse(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    permissions: Optional[list[str]] = []
     id: int
     username: str
     email: str
@@ -95,5 +98,8 @@ def get_me(current_user: User = Depends(deps.get_current_user)):
         email=current_user.email,
         is_active=current_user.is_active,
         role=primary_role,
-        roles=[r.name for r in current_user.roles]
+        full_name=current_user.full_name,
+        phone=current_user.phone,
+        roles=[r.name for r in current_user.roles],
+        permissions=sorted(list({p.name for r in current_user.roles for p in r.permissions}))
     )

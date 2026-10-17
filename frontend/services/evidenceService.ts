@@ -55,54 +55,130 @@ export const evidenceService = {
     return response.data;
   },
 
-  // Phê duyệt minh chứng với quy trình tự động chuyển trạng thái an toàn
+  /**
+   * Chuyển trạng thái minh chứng qua State Machine API
+   * Sử dụng endpoint PATCH /evidences/{id}/workflow
+   */
+  updateWorkflow: async (id: string, newStatus: string, note?: string) => {
+    const response = await apiClient.patch(`/evidences/${id}/workflow`, {
+      status: newStatus,
+      note: note || null,
+    });
+    return response.data;
+  },
+
+  /**
+   * Lấy danh sách trạng thái có thể chuyển từ trạng thái hiện tại
+   */
+  getTransitions: async (id: string) => {
+    const response = await apiClient.get(`/evidences/${id}/transitions`);
+    return response.data;
+  },
+
+  /**
+   * Lấy lịch sử duyệt minh chứng
+   */
+  getReviewHistory: async (id: string) => {
+    const response = await apiClient.get(`/evidences/${id}/review-history`);
+    return response.data;
+  },
+
+  /**
+   * Phê duyệt minh chứng - chuyển qua State Machine
+   * Tự động phát hiện trạng thái hiện tại và chuyển phù hợp
+   */
   approveEvidence: async (id: string, comment?: string) => {
     const note = comment || 'Phê duyệt minh chứng chính thức';
+    
+    // Thử approve trực tiếp (PASSED -> APPROVED)
     try {
-      const directRes = await apiClient.post(`/evidences/${id}/review`, {
-        action: 'APPROVE',
-        comment: note
+      const res = await apiClient.patch(`/evidences/${id}/workflow`, {
+        status: 'APPROVED',
+        note: note,
       });
-      return directRes.data;
+      return res.data;
     } catch (err: any) {
       const detail = err.response?.data?.detail || '';
-      if (detail.includes('passed or reviewed') || err.response?.status === 400) {
-        // Tự động chuyển qua SUBMIT -> PASS -> APPROVE
+      
+      // Nếu chưa đúng trạng thái, tự động chuyển tuần tự
+      if (err.response?.status === 400 && detail.includes('Không thể chuyển')) {
+        // Thử nộp trước (DRAFT -> SUBMITTED)
         try {
-          await apiClient.post(`/evidences/${id}/review`, { action: 'SUBMIT', comment: 'Gửi duyệt minh chứng' });
+          await apiClient.patch(`/evidences/${id}/workflow`, {
+            status: 'SUBMITTED',
+            note: 'Tự động nộp bởi hệ thống',
+          });
         } catch (e) {}
+        
+        // Thử duyệt sơ bộ (SUBMITTED -> PASSED)
         try {
-          await apiClient.post(`/evidences/${id}/review`, { action: 'PASS', comment: 'Đạt kiểm tra ban đầu' });
+          await apiClient.patch(`/evidences/${id}/workflow`, {
+            status: 'PASSED',
+            note: 'Duyệt sơ bộ tự động',
+          });
         } catch (e) {}
-        const finalRes = await apiClient.post(`/evidences/${id}/review`, { action: 'APPROVE', comment: note });
+        
+        // Phê duyệt cuối (PASSED -> APPROVED)
+        const finalRes = await apiClient.patch(`/evidences/${id}/workflow`, {
+          status: 'APPROVED',
+          note: note,
+        });
         return finalRes.data;
       }
       throw err;
     }
   },
 
-  // Từ chối minh chứng kèm lý do và tự động gửi thông báo phản hồi
+  /**
+   * Từ chối minh chứng kèm lý do bắt buộc
+   * Backend sẽ tự động gửi Notification cho author
+   */
   rejectEvidence: async (id: string, reason: string) => {
     if (!reason || !reason.trim()) {
       throw new Error('Vui lòng nhập lý do từ chối');
     }
-    const cleanReason = reason.trim();
-
-    // 1. Cập nhật trạng thái review sang REJECT
-    const res = await apiClient.post(`/evidences/${id}/review`, {
-      action: 'REJECT',
-      comment: cleanReason
+    
+    const res = await apiClient.patch(`/evidences/${id}/workflow`, {
+      status: 'REJECTED',
+      note: reason.trim(),
     });
+    return res.data;
+  },
 
-    // 2. Gửi thông báo lý do vào lịch sử trao đổi của minh chứng
-    try {
-      await apiClient.post(`/evidences/${id}/comments`, {
-        content: `[THÔNG BÁO TỪ CHỐI MINH CHỨNG]: ${cleanReason}`
-      });
-    } catch (e) {
-      console.warn('Could not post rejection notification comment:', e);
+  /**
+   * Yêu cầu chỉnh sửa (SUBMITTED -> NEEDS_REVISION)
+   */
+  requestRevision: async (id: string, reason: string) => {
+    if (!reason || !reason.trim()) {
+      throw new Error('Vui lòng nhập lý do yêu cầu chỉnh sửa');
     }
+    
+    const res = await apiClient.patch(`/evidences/${id}/workflow`, {
+      status: 'NEEDS_REVISION',
+      note: reason.trim(),
+    });
+    return res.data;
+  },
 
+  /**
+   * Nộp minh chứng (DRAFT -> SUBMITTED)
+   */
+  submitEvidence: async (id: string) => {
+    const res = await apiClient.patch(`/evidences/${id}/workflow`, {
+      status: 'SUBMITTED',
+      note: 'Nộp minh chứng để duyệt',
+    });
+    return res.data;
+  },
+
+  /**
+   * Duyệt sơ bộ (SUBMITTED -> PASSED)
+   */
+  passEvidence: async (id: string) => {
+    const res = await apiClient.patch(`/evidences/${id}/workflow`, {
+      status: 'PASSED',
+      note: 'Đạt duyệt sơ bộ',
+    });
     return res.data;
   },
 
@@ -115,20 +191,17 @@ export const evidenceService = {
   },
 
   deleteEvidence: async (id: string) => {
-    // Luôn ghi nhận vào danh sách đã xóa để giao diện lọc sạch ngay lập tức
     addDeletedEvidenceId(id);
-
-    // 1. Thử gọi DELETE trên backend nếu có
     try {
       const response = await apiClient.delete(`/evidences/${id}`);
       return response.data;
     } catch (err: any) {
-      // 2. Nếu backend trả về 405 Method Not Allowed (Render build cũ), soft-delete qua review
       if (err.response?.status === 405) {
+        // Fallback: soft-delete qua workflow
         try {
-          await apiClient.post(`/evidences/${id}/review`, {
-            action: 'REJECT',
-            comment: '[ĐÃ XÓA BỞI QUẢN TRỊ VIÊN]'
+          await apiClient.patch(`/evidences/${id}/workflow`, {
+            status: 'REJECTED',
+            note: '[ĐÃ XÓA BỞI QUẢN TRỊ VIÊN]'
           });
         } catch (e) {}
         return { message: 'Đã xóa minh chứng thành công' };
